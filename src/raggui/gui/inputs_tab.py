@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from raggui.config import load_output_base, save_output_base
 from raggui.jobs.job import Job
 from raggui.paths import FALLBACK_INPUT_GLOBS, workspace_title
-from raggui.pipeline import accepted_input_globs, discover_steps, ordered
+from raggui.pipeline import accepted_input_globs, discover_steps, step_plan
 
 
 def _globs() -> list[str]:
@@ -159,24 +159,32 @@ class InputStepPanel(QWidget):
         steps_heading.setTextFormat(Qt.TextFormat.RichText)
         root.addWidget(steps_heading)
 
-        # Checkboxes are built from the pipeline's steps (config.yaml). All default
-        # to on; the user unticks what they don't want.
-        self._checks: dict[str, QCheckBox] = {}
-        steps = discover_steps()
-        if steps:
-            for step in steps:
+        # Checkboxes come from the pipeline (config.yaml `steps:`). Selection is a
+        # contiguous run from a legal start (see _refresh_plan / _on_toggle): you
+        # can only begin at a step whose inputs are available, can't leave a hole,
+        # and unchecking a step drops everything after it.
+        self._steps = discover_steps()
+        self._checks: list[QCheckBox] = []
+        self._start: int | None = None
+        self._end: int | None = None
+        self._legal: list[bool] = []
+        self._reach: list[int] = []
+        self._syncing = False
+        self._status = QLabel()
+        self._status.setWordWrap(True)
+        if self._steps:
+            for i, step in enumerate(self._steps):
                 cb = QCheckBox(step.label)
-                cb.setToolTip(f"{step.name}  (env: {step.env})")
-                cb.setChecked(True)
-                self._checks[step.name] = cb
+                needs = ", ".join(step.needs) or "—"
+                cb.setToolTip(f"{step.name}  (env: {step.env})\nneeds: {needs}")
+                cb.toggled.connect(lambda checked, idx=i: self._on_toggle(idx, checked))
+                self._checks.append(cb)
                 root.addWidget(cb)
+            root.addWidget(self._status)
         else:
-            note = QLabel(
-                "No pipeline steps found. Define them in config.yaml under `steps:`."
-            )
-            note.setWordWrap(True)
-            note.setStyleSheet("color: #d0883a;")
-            root.addWidget(note)
+            self._status.setText("No pipeline steps found. Define them in config.yaml under `steps:`.")
+            self._status.setStyleSheet("color: #d0883a;")
+            root.addWidget(self._status)
 
         root.addWidget(self._hline())
 
@@ -213,14 +221,23 @@ class InputStepPanel(QWidget):
         queue_row.addWidget(self._queue_btn)
         root.addLayout(queue_row)
 
+        if self._steps:
+            self._refresh_plan()
+
     # --- public API ---------------------------------------------------------
 
     @property
     def input_path(self) -> Path:
         return self._input
 
+    @property
+    def stem(self) -> str:
+        return self._input.stem
+
     def selected_steps(self) -> list[str]:
-        return ordered({name for name, cb in self._checks.items() if cb.isChecked()})
+        if self._start is None or self._end is None:
+            return []
+        return [self._steps[k].name for k in range(self._start, self._end + 1)]
 
     def output_base(self) -> Path | None:
         text = self._out_edit.text().strip()
@@ -230,16 +247,98 @@ class InputStepPanel(QWidget):
         return self._overwrite.isChecked()
 
     def adopt_selection(self, steps: list[str], output_base: Path | None, overwrite: bool) -> None:
-        """Copy another panel's choices (used by Duplicate)."""
-        selected = set(steps)
-        for name, cb in self._checks.items():
-            cb.setChecked(name in selected)
+        """Copy another panel's choices (used by Duplicate), if still valid here."""
         if output_base is not None:
             self._set_output_base(output_base)
         self._overwrite.setChecked(overwrite)
+        self._refresh_plan()
+        names = [s.name for s in self._steps]
+        idxs = sorted(names.index(n) for n in steps if n in names)
+        if idxs and idxs == list(range(idxs[0], idxs[-1] + 1)):
+            s, e = idxs[0], idxs[-1]
+            if self._legal[s] and e <= self._reach[s]:
+                self._start, self._end = s, e
+                self._sync()
 
     def confirm_added(self) -> None:
         self._added_lbl.setText("Added to queue ✓")
+
+    # --- step gating (contiguous selection from a legal start) ---------------
+
+    def _refresh_plan(self) -> None:
+        """Recompute legal starts / reachability from the input + on-disk outputs,
+        and reset the selection to the full runnable chain from the earliest start."""
+        self._legal, self._reach = step_plan(self._input, self.output_base(), self.stem)
+        starts = [i for i, ok in enumerate(self._legal) if ok]
+        if starts:
+            self._start = starts[0]
+            self._end = self._reach[self._start]
+        else:
+            self._start = self._end = None
+        self._sync()
+
+    def _on_toggle(self, idx: int, checked: bool) -> None:
+        if self._syncing:
+            return
+        s, e, legal, reach = self._start, self._end, self._legal, self._reach
+        if checked:
+            if s is None:
+                if legal[idx]:
+                    s = e = idx
+            elif idx == e + 1 and e < reach[s]:
+                e = idx                       # extend the end forward
+            elif idx == s - 1 and legal[idx]:
+                s, e = idx, min(e, reach[idx])  # extend the start backward
+        else:
+            if s is not None:
+                if idx == s:                  # drop the leading step
+                    nxt = s + 1
+                    if nxt > e or not legal[nxt]:
+                        s = e = None
+                    else:
+                        s, e = nxt, min(e, reach[nxt])
+                elif s < idx <= e:            # drop a step -> drop everything after it
+                    e = idx - 1
+        self._start, self._end = s, e
+        self._sync()
+
+    def _sync(self) -> None:
+        """Reflect the [start, end] selection onto the checkboxes (checked +
+        enabled), then update the status line. Signals are blocked meanwhile."""
+        self._syncing = True
+        s, e = self._start, self._end
+        for i, cb in enumerate(self._checks):
+            selected = s is not None and s <= i <= e
+            cb.setChecked(selected)
+            if s is None:
+                enabled = bool(self._legal[i])
+            else:
+                enabled = (
+                    (s <= i <= e)
+                    or (i == e + 1 and e < self._reach[s])
+                    or (i == s - 1 and self._legal[i])
+                )
+            cb.setEnabled(enabled)
+        self._syncing = False
+        self._update_status()
+
+    def _update_status(self) -> None:
+        if not self._steps:
+            return
+        s, e = self._start, self._end
+        if s is None:
+            if any(self._legal):
+                self._status.setText("Pick a starting step — only steps whose inputs are available are enabled.")
+            else:
+                self._status.setText(
+                    "No step can start yet: the input doesn't match the first step and no existing "
+                    "outputs were found. Choose the output directory to detect partial results."
+                )
+            self._status.setStyleSheet("color: #d0883a;")
+        else:
+            names = " → ".join(self._steps[k].label for k in range(s, e + 1))
+            self._status.setText(f"Will run:  {names}")
+            self._status.setStyleSheet("color: #4caf50;")
 
     # --- internals ----------------------------------------------------------
 
@@ -259,6 +358,9 @@ class InputStepPanel(QWidget):
         if chosen:
             self._set_output_base(Path(chosen))
             save_output_base(Path(chosen))
+            if self._steps:
+                # Existing outputs in the new dir change which steps can start.
+                self._refresh_plan()
 
 
 @dataclass

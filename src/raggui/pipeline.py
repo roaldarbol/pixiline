@@ -13,6 +13,7 @@ The GUI shows the steps in order; every step is invoked the same way:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from functools import lru_cache
 from pathlib import Path
 
@@ -100,6 +101,66 @@ def ordered(step_names: set[str]) -> list[str]:
     """Return the given step names in declared (config.yaml) order."""
     index = {s.name: i for i, s in enumerate(discover_steps())}
     return sorted((n for n in step_names if n in index), key=lambda n: index[n])
+
+
+# --- runnability planning ----------------------------------------------------
+#
+# A step can be *started* only when every one of its needs is available without
+# running any pipeline step: an external need (a glob) is met when the chosen
+# input file matches it; an artifact need (a "{stem}/…" pattern) is met when that
+# file/dir already exists under the output base. Downstream, an artifact need is
+# also met if an earlier *selected* step makes it. This drives the GUI's gating:
+# the selection must be a contiguous run from a legal start, with no holes.
+
+
+def _need_met_at_rest(need: str, input_name: str, output_base: Path | None, stem: str) -> bool:
+    """Whether a single need is satisfiable without running any step."""
+    if _is_external(need):
+        if not input_name:
+            return False
+        return any(
+            fnmatch(input_name.lower(), part.strip().lower())
+            for part in need.split(",")
+            if part.strip()
+        )
+    if output_base is None:
+        return False
+    return (output_base / need.replace("{stem}", stem)).exists()
+
+
+def step_plan(
+    input_path: Path | None,
+    output_base: Path | None,
+    stem: str,
+) -> tuple[list[bool], list[int]]:
+    """Per-step runnability for the current input + on-disk artifacts.
+
+    Returns ``(legal, reach)`` indexed by step position:
+    - ``legal[i]``  — step i can be the first step run (all needs met at rest).
+    - ``reach[i]``  — the furthest end index of a contiguous runnable run that
+      starts at i (``i-1`` if i itself can't start). Selecting [i..reach[i]] is the
+      maximal valid contiguous selection beginning at i.
+    """
+    steps = discover_steps()
+    name = input_path.name if input_path else ""
+
+    def met_at_rest(need: str) -> bool:
+        return _need_met_at_rest(need, name, output_base, stem)
+
+    legal = [all(met_at_rest(n) for n in s.needs) for s in steps]
+
+    reach: list[int] = []
+    for start in range(len(steps)):
+        made: set[str] = set()
+        end = start - 1
+        for k in range(start, len(steps)):
+            step = steps[k]
+            if not all(met_at_rest(n) or n in made for n in step.needs):
+                break
+            made.add(step.makes)
+            end = k
+        reach.append(end)
+    return legal, reach
 
 
 def build_command(
