@@ -23,24 +23,36 @@ steps:
     needs: ["*.mp4, *.mov"]                                        # runs on the raw video
     makes: "{stem}/tracking/raw/{stem}_bytetrack"
 
+  # Optional QC overlay (off by default in the GUI). `optional: true` means it is
+  # not part of the required chain - toggle it on its own; nothing depends on it.
+  - name:  render
+    env:   tracking
+    optional: true
+    needs:
+      - "{stem}/tracking/raw/{stem}_bytetrack"
+      - "{stem}/videos/motion/{stem}_motion.mp4"
+    makes: "{stem}/videos/tracklets/*"
+
   - name:  export
     env:   export
     needs:
       - "{stem}/tracking/raw/{stem}_bytetrack"
       - "{stem}/videos/motion/{stem}_motion.mp4"
-    makes: "{stem}/tracking/raw/{stem}_bytetrack/{stem}.csv"
+    # octron names the CSV by the track/label (e.g. portiafimbriata_track_1.csv),
+    # not by stem, so this is a glob.
+    makes: "{stem}/tracking/raw/{stem}_bytetrack/*.csv"
 
   - name:  preprocess
     env:   segmentation
     needs:
-      - "{stem}/tracking/raw/{stem}_bytetrack/{stem}.csv"
+      - "{stem}/tracking/raw/{stem}_bytetrack/*.csv"
       - "*.mp4, *.mov"                                             # original, for fps
     makes: "{stem}/tracking/processed/{stem}.parquet"
 
-  - name:  segment
-    env:   segmentation
-    needs: ["{stem}/tracking/processed/{stem}.parquet"]
-    makes: "{stem}/segments/{stem}_bouts.csv"
+  # - name:  segment
+  #   env:   segmentation
+  #   needs: ["{stem}/tracking/processed/{stem}.parquet"]
+  #   makes: "{stem}/segments/{stem}_bouts.csv"
 
 # === Per-step settings (edited in the GUI Settings tab) ====================
 

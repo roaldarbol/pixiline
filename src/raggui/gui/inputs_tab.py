@@ -31,7 +31,14 @@ from PySide6.QtWidgets import (
 from raggui.config import load_output_base, save_output_base
 from raggui.jobs.job import Job
 from raggui.paths import FALLBACK_INPUT_GLOBS, workspace_title
-from raggui.pipeline import accepted_input_globs, discover_steps, step_plan
+from raggui.pipeline import (
+    accepted_input_globs,
+    discover_steps,
+    env_available,
+    need_met,
+    ordered,
+    step_plan,
+)
 
 
 def _globs() -> list[str]:
@@ -159,24 +166,32 @@ class InputStepPanel(QWidget):
         steps_heading.setTextFormat(Qt.TextFormat.RichText)
         root.addWidget(steps_heading)
 
-        # Checkboxes come from the pipeline (config.yaml `steps:`). Selection is a
-        # contiguous run from a legal start (see _refresh_plan / _on_toggle): you
-        # can only begin at a step whose inputs are available, can't leave a hole,
-        # and unchecking a step drops everything after it.
+        # Checkboxes come from the pipeline (config.yaml `steps:`). The REQUIRED
+        # steps form a contiguous run from a legal start (no holes; unchecking a
+        # step drops everything after it). OPTIONAL steps are independent toggles,
+        # off by default, enabled only when their inputs are available.
         self._steps = discover_steps()
+        self._req_pos = [i for i, s in enumerate(self._steps) if not s.optional]  # checkbox indices
         self._checks: list[QCheckBox] = []
-        self._start: int | None = None
-        self._end: int | None = None
-        self._legal: list[bool] = []
-        self._reach: list[int] = []
+        self._start: int | None = None  # position into _req_pos (required-chain start)
+        self._end: int | None = None    # position into _req_pos (required-chain end)
+        self._opt_selected: set[int] = set()  # checkbox indices of selected optional steps
+        self._legal: list[bool] = []     # indexed by position in _req_pos
+        self._reach: list[int] = []      # indexed by position in _req_pos
         self._syncing = False
         self._status = QLabel()
         self._status.setWordWrap(True)
         if self._steps:
             for i, step in enumerate(self._steps):
-                cb = QCheckBox(step.label)
+                label = f"{step.label}  (optional)" if step.optional else step.label
+                cb = QCheckBox(label)
                 needs = ", ".join(step.needs) or "—"
-                cb.setToolTip(f"{step.name}  (env: {step.env})\nneeds: {needs}")
+                tip = f"{step.name}  (env: {step.env})\nneeds: {needs}"
+                if step.optional:
+                    tip += "\nOptional — off by default; nothing else depends on it."
+                if not env_available(step.env):
+                    tip += f"\n⚠ environment '{step.env}' is not defined in pixi.toml — this step can't run."
+                cb.setToolTip(tip)
                 cb.toggled.connect(lambda checked, idx=i: self._on_toggle(idx, checked))
                 self._checks.append(cb)
                 root.addWidget(cb)
@@ -235,9 +250,13 @@ class InputStepPanel(QWidget):
         return self._input.stem
 
     def selected_steps(self) -> list[str]:
-        if self._start is None or self._end is None:
-            return []
-        return [self._steps[k].name for k in range(self._start, self._end + 1)]
+        names: set[str] = set()
+        if self._start is not None and self._end is not None:
+            for p in range(self._start, self._end + 1):
+                names.add(self._steps[self._req_pos[p]].name)
+        for oi in self._opt_selected:
+            names.add(self._steps[oi].name)
+        return ordered(names)
 
     def output_base(self) -> Path | None:
         text = self._out_edit.text().strip()
@@ -247,76 +266,120 @@ class InputStepPanel(QWidget):
         return self._overwrite.isChecked()
 
     def adopt_selection(self, steps: list[str], output_base: Path | None, overwrite: bool) -> None:
-        """Copy another panel's choices (used by Duplicate), if still valid here."""
+        """Copy another panel's choices (used by Duplicate), keeping only what's
+        still valid here."""
         if output_base is not None:
             self._set_output_base(output_base)
         self._overwrite.setChecked(overwrite)
         self._refresh_plan()
-        names = [s.name for s in self._steps]
-        idxs = sorted(names.index(n) for n in steps if n in names)
-        if idxs and idxs == list(range(idxs[0], idxs[-1] + 1)):
-            s, e = idxs[0], idxs[-1]
+        want = set(steps)
+        # Required chain: the contiguous run of wanted required steps, if valid.
+        positions = [p for p, i in enumerate(self._req_pos) if self._steps[i].name in want]
+        if positions and positions == list(range(positions[0], positions[-1] + 1)):
+            s, e = positions[0], positions[-1]
             if self._legal[s] and e <= self._reach[s]:
                 self._start, self._end = s, e
-                self._sync()
+        # Optional steps: any wanted one that is runnable here.
+        self._opt_selected = {
+            i for i, st in enumerate(self._steps)
+            if st.optional and st.name in want and self._optional_enabled(i)
+        }
+        self._sync()
 
     def confirm_added(self) -> None:
         self._added_lbl.setText("Added to queue ✓")
 
-    # --- step gating (contiguous selection from a legal start) ---------------
+    # --- step gating --------------------------------------------------------
+    #
+    # Required steps form a contiguous run from a legal start (_start/_end are
+    # positions into _req_pos). Optional steps (_opt_selected) are independent
+    # toggles, enabled only when their needs are met by the input, on-disk
+    # outputs, or the makes of the selected required chain.
 
     def _refresh_plan(self) -> None:
-        """Recompute legal starts / reachability from the input + on-disk outputs,
-        and reset the selection to the full runnable chain from the earliest start."""
-        self._legal, self._reach = step_plan(self._input, self.output_base(), self.stem)
-        starts = [i for i, ok in enumerate(self._legal) if ok]
+        required = tuple(self._steps[i] for i in self._req_pos)
+        self._legal, self._reach = step_plan(self._input, self.output_base(), self.stem, required)
+        starts = [p for p, ok in enumerate(self._legal) if ok]
         if starts:
             self._start = starts[0]
             self._end = self._reach[self._start]
         else:
             self._start = self._end = None
+        self._opt_selected = set()  # optional steps default off
         self._sync()
+
+    def _selected_required_makes(self) -> frozenset[str]:
+        if self._start is None or self._end is None:
+            return frozenset()
+        return frozenset(
+            self._steps[self._req_pos[p]].makes for p in range(self._start, self._end + 1)
+        )
+
+    def _optional_enabled(self, i: int) -> bool:
+        step = self._steps[i]
+        if not env_available(step.env):
+            return False
+        produced = self._selected_required_makes()
+        return all(
+            need_met(n, self._input, self.output_base(), self.stem, produced) for n in step.needs
+        )
 
     def _on_toggle(self, idx: int, checked: bool) -> None:
         if self._syncing:
             return
+        if self._steps[idx].optional:
+            if checked and self._optional_enabled(idx):
+                self._opt_selected.add(idx)
+            elif not checked:
+                self._opt_selected.discard(idx)
+            self._sync()
+            return
+        # Required step: operate in required-position space.
+        p = self._req_pos.index(idx)
         s, e, legal, reach = self._start, self._end, self._legal, self._reach
         if checked:
             if s is None:
-                if legal[idx]:
-                    s = e = idx
-            elif idx == e + 1 and e < reach[s]:
-                e = idx                       # extend the end forward
-            elif idx == s - 1 and legal[idx]:
-                s, e = idx, min(e, reach[idx])  # extend the start backward
+                if legal[p]:
+                    s = e = p
+            elif p == e + 1 and e < reach[s]:
+                e = p                          # extend the end forward
+            elif p == s - 1 and legal[p]:
+                s, e = p, min(e, reach[p])      # extend the start backward
         else:
             if s is not None:
-                if idx == s:                  # drop the leading step
+                if p == s:                      # drop the leading step
                     nxt = s + 1
                     if nxt > e or not legal[nxt]:
                         s = e = None
                     else:
                         s, e = nxt, min(e, reach[nxt])
-                elif s < idx <= e:            # drop a step -> drop everything after it
-                    e = idx - 1
+                elif s < p <= e:                # drop a step -> drop everything after it
+                    e = p - 1
         self._start, self._end = s, e
+        # An optional step may have depended on a now-deselected required step.
+        self._opt_selected = {oi for oi in self._opt_selected if self._optional_enabled(oi)}
         self._sync()
 
     def _sync(self) -> None:
-        """Reflect the [start, end] selection onto the checkboxes (checked +
-        enabled), then update the status line. Signals are blocked meanwhile."""
+        """Reflect the selection onto the checkboxes (checked + enabled), then update
+        the status line. Signals are blocked meanwhile."""
         self._syncing = True
         s, e = self._start, self._end
         for i, cb in enumerate(self._checks):
-            selected = s is not None and s <= i <= e
+            if self._steps[i].optional:
+                cb.setChecked(i in self._opt_selected)
+                cb.setEnabled(self._optional_enabled(i))
+                continue
+            p = self._req_pos.index(i)
+            selected = s is not None and s <= p <= e
             cb.setChecked(selected)
             if s is None:
-                enabled = bool(self._legal[i])
+                enabled = bool(self._legal[p])
             else:
                 enabled = (
-                    (s <= i <= e)
-                    or (i == e + 1 and e < self._reach[s])
-                    or (i == s - 1 and self._legal[i])
+                    (s <= p <= e)
+                    or (p == e + 1 and e < self._reach[s])
+                    or (p == s - 1 and self._legal[p])
                 )
             cb.setEnabled(enabled)
         self._syncing = False
@@ -325,20 +388,29 @@ class InputStepPanel(QWidget):
     def _update_status(self) -> None:
         if not self._steps:
             return
-        s, e = self._start, self._end
-        if s is None:
-            if any(self._legal):
-                self._status.setText("Pick a starting step — only steps whose inputs are available are enabled.")
+        chain = []
+        if self._start is not None:
+            chain = [self._steps[self._req_pos[p]].label for p in range(self._start, self._end + 1)]
+        opts = [self._steps[oi].label for oi in sorted(self._opt_selected)]
+        if chain or opts:
+            parts = []
+            if chain:
+                parts.append(" → ".join(chain))
+            if opts:
+                parts.append("(+ " + ", ".join(opts) + ")")
+            self._status.setText("Will run:  " + "   ".join(parts))
+            self._status.setStyleSheet("color: #4caf50;")
+        else:
+            startable = any(self._legal) or any(
+                self._steps[i].optional and self._optional_enabled(i) for i in range(len(self._steps))
+            )
+            if startable:
+                self._status.setText("Pick a step to run — only steps whose inputs are available are enabled.")
             else:
                 self._status.setText(
-                    "No step can start yet: the input doesn't match the first step and no existing "
-                    "outputs were found. Choose the output directory to detect partial results."
+                    "No step can start yet. Choose the output directory to detect existing outputs."
                 )
             self._status.setStyleSheet("color: #d0883a;")
-        else:
-            names = " → ".join(self._steps[k].label for k in range(s, e + 1))
-            self._status.setText(f"Will run:  {names}")
-            self._status.setStyleSheet("color: #4caf50;")
 
     # --- internals ----------------------------------------------------------
 
