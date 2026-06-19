@@ -1,0 +1,13 @@
+# Pixi environment (rebuilt from pixi.toml / pixi.lock)
+.pixi/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Output artefacts (the output dir is chosen by the user, but ignore ./output)
+output/
+
+# OS cruft
+Thumbs.db
+.DS_Store

@@ -1,0 +1,99 @@
+# Configuration for the whole pipeline, in one file:
+#   - `steps:`  defines the pipeline (the ordered chain). The GUI and orchestrator
+#               read this; the Settings tab does NOT edit it (structure, not knobs).
+#   - the per-step sections below (motion:, predict:, ...) are the tunable settings,
+#               surfaced as editable fields in the GUI's Settings tab.
+# Paths are relative to the pipeline/ folder.
+
+# === Pipeline definition ===================================================
+# An ordered list of steps. Each step lists the files it `needs` and the file/dir
+# it `makes`. Patterns use {stem} (the recording id) and are relative to the chosen
+# output directory; a bare glob like "*.mp4, *.mov" means an external file you
+# supply (the source video). A step can run once all of its `needs` exist; its
+# `makes` then satisfies a later step's `needs`. Order is list order - no numbers.
+# Tuning for a step lives in the same-named section further down.
+steps:
+  - name:  motion
+    env:   motion
+    needs: ["*.mp4, *.mov"]                                        # raw recording
+    makes: "{stem}/videos/motion/{stem}_motion.mp4"
+
+  - name:  predict
+    env:   tracking
+    needs: ["*.mp4, *.mov"]                                        # runs on the raw video
+    makes: "{stem}/tracking/raw/{stem}_bytetrack"
+
+  - name:  export
+    env:   export
+    needs:
+      - "{stem}/tracking/raw/{stem}_bytetrack"
+      - "{stem}/videos/motion/{stem}_motion.mp4"
+    makes: "{stem}/tracking/raw/{stem}_bytetrack/{stem}.csv"
+
+  - name:  preprocess
+    env:   segmentation
+    needs:
+      - "{stem}/tracking/raw/{stem}_bytetrack/{stem}.csv"
+      - "*.mp4, *.mov"                                             # original, for fps
+    makes: "{stem}/tracking/processed/{stem}.parquet"
+
+  - name:  segment
+    env:   segmentation
+    needs: ["{stem}/tracking/processed/{stem}.parquet"]
+    makes: "{stem}/segments/{stem}_bouts.csv"
+
+# === Per-step settings (edited in the GUI Settings tab) ====================
+
+# --- Step 1: motion-colour video (BehaveAI) --------------------------------
+motion:
+  lum_weight: 0            # 0 = pure motion colour; >0 blends in luminance
+
+# --- Step 2: YOLO prediction / tracking (Octron) ---------------------------
+predict:
+  model: resources/models/yolo-portia/yolo26m_seg_1280_20260327   # the segmentation model dir
+  infer_batch_size: 16
+  detailed: true               # emit per-mask region-property channels
+  one_object_per_label: true   # single individual per class label
+
+# --- Step 2b: tracklet overlay video (OPTIONAL QC, off by default) ---------
+render:
+  preset: final
+  tracklet_interpolate: 30
+  tracklet_size: 300
+  tracklet_mask_centroids: true
+
+# --- Step 3: region-property export (Octron) -------------------------------
+export:
+  # "all" exports every shape + colour metric; or give a comma-separated subset
+  # of property names (e.g. "area,eccentricity,intensity_mean").
+  region_properties: all
+
+# --- Step 4: preprocess tracking -> aniframe parquet (R) -------------------
+# No settings: the frame rate is probed from the source video with ffprobe
+# (time = frame_index / fps; start_datetime from the video's mtime).
+
+# --- Step 5: segment + classify -> final CSV (R) ---------------------------
+# The sampling rate is NOT configured: segment.R derives it per recording from the
+# parquet's `time` column (robust to the tracker's dropped frames), so the
+# durations below are given in SECONDS and scaled by the real rate at run time.
+segment:
+  sleep_downsample_secs: 5      # window (s) to downsample to before changepoint detection
+  sleep_penalty:         500    # changepoint penalty (higher = fewer segments)
+
+  # Active-bout detector (canonical settings from segmentation.qmd).
+  bout_k_hi:             6      # enter-bout threshold (MADs above the median)
+  bout_k_lo:             4      # leave-bout threshold (hysteresis)
+  bout_min_length_secs:  10     # drop bouts shorter than this
+  bout_min_gap_secs:     60     # bridge gaps shorter than this
+
+  # Awake-vs-REM classifier. IMPORTANT (persistence gap): segmentation.qmd *tunes*
+  # the decision threshold at run time (tune_threshold(), ~line 941) and only
+  # saves models/awake_classifier.rds - NOT the threshold. Until the notebook is
+  # updated to also write the tuned value here, these are documented defaults:
+  #   awake_threshold = thr$best$threshold  from the notebook
+  #   reject_band     = the +/- gray-zone half-width (notebook uses 0.10)
+  # A bout is "Awake" if P(Awake) >= awake_threshold + reject_band, "REM" if
+  # <= awake_threshold - reject_band, else "uncertain".
+  classifier:      resources/models/awake_classifier.rds
+  awake_threshold: 0.5
+  reject_band:     0.10
