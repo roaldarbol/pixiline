@@ -20,7 +20,7 @@ from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from raggui import applog
 from raggui.jobs.job import Job, JobState
 from raggui.jobs.termlog import SettledLog
-from raggui.manifest import build_command
+from raggui.manifest import build_command, clear_outputs, step_inputs_met
 from raggui.paths import pixi_executable
 
 _KILL_GRACE_MS = 3000
@@ -85,6 +85,7 @@ class Worker(QObject):
         self._launch_failed = False
         self._phase = _PHASE_INSTALL
         self._logfile: SettledLog | None = None
+        self._produced: set[str] = set()  # output globs of steps that have run
 
     @property
     def job(self) -> Job:
@@ -154,13 +155,37 @@ class Worker(QObject):
 
     def _start_current_step(self) -> None:
         self._phase = _PHASE_RUN
-        name = self._job.current_step_name()
-        if name is None:
-            return
-        step = self._job.pipeline.step(name)
-        if step is None:
-            self._fail(f"Step '{name}' is not defined in the pipeline.")
-            return
+        pipeline = self._job.pipeline
+        # Snakemake-style: advance past selected steps whose inputs aren't available
+        # for this file (Pixi caching separately skips steps with up-to-date outputs).
+        while True:
+            name = self._job.current_step_name()
+            if name is None:
+                self._finish()
+                return
+            step = pipeline.step(name)
+            if step is None:
+                self._fail(f"Step '{name}' is not defined in the pipeline.")
+                return
+            if not step_inputs_met(
+                step,
+                has_input=True,
+                output_base=self._job.output_base,
+                stem=self._job.stem,
+                produced=self._produced,
+            ):
+                self._emit_log(f"\n[skipping '{name}': required inputs not available]\n")
+                applog.log.info(f"Job {self._job.id}: step '{name}' skipped (inputs unavailable)")
+                self._job.current_step += 1
+                self.progress.emit(self._job.id, self._job.fraction())
+                continue
+            break
+        if self._job.overwrite:  # delete existing outputs so the step re-runs
+            removed = clear_outputs(step, self._job.output_base, self._job.stem)
+            if removed:
+                self._emit_log(
+                    f"\n[overwrite: removed {len(removed)} existing output(s) for '{name}']\n"
+                )
         applog.log.info(f"Job {self._job.id}: step '{name}' running")
         self.step_changed.emit(self._job.id, self._job.current_step, name)
         self.progress.emit(self._job.id, self._job.fraction())
@@ -197,15 +222,12 @@ class Worker(QObject):
             self._fail(f"Step '{name}' failed (exit code {code}).")
             return
         applog.log.info(f"Job {self._job.id}: step '{name}' done")
+        step = self._job.pipeline.step(name)
+        if step is not None:
+            self._produced |= set(step.outputs)  # its outputs now exist on disk
         self._job.current_step += 1
         self.progress.emit(self._job.id, self._job.fraction())
-        if self._job.current_step >= len(self._job.steps):
-            self._job.state = JobState.DONE
-            applog.log.info(f"Job {self._job.id} done")
-            self._close_log()
-            self.finished.emit(self._job.id)
-            return
-        self._start_current_step()
+        self._start_current_step()  # runs the next step, or skips/finishes
 
     def _on_error(self, error: QProcess.ProcessError) -> None:
         # Most important case: the program (pixi) could not be started at all.
@@ -215,6 +237,13 @@ class Worker(QObject):
                 "Could not launch 'pixi'. Make sure pixi is installed and on PATH "
                 "(or set the PIXI_EXE environment variable)."
             )
+
+    def _finish(self) -> None:
+        """All selected steps have run or been skipped — the job is done."""
+        self._job.state = JobState.DONE
+        applog.log.info(f"Job {self._job.id} done")
+        self._close_log()
+        self.finished.emit(self._job.id)
 
     def _fail(self, message: str) -> None:
         """Mark the job failed, stop the chain, and report (log + signal)."""

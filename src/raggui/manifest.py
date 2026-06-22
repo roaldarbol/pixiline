@@ -204,6 +204,31 @@ def step_inputs_met(
     return True
 
 
+def clear_outputs(step: Step, output_base: Path, stem: str) -> list[str]:
+    """Delete a step's declared output files for this run (the 'overwrite' action),
+    so the step re-runs instead of being skipped as up to date. Only files **under
+    ``output_base``** are removed, as a safety guard against a broad/odd glob."""
+    deleted: list[str] = []
+    base = str(output_base)
+    for pat in step.outputs:
+        resolved = resolve(pat, {"output": base, "stem": stem})
+        if not resolved.startswith(base):
+            continue  # never delete outside the chosen output base
+        if any(c in resolved for c in "*?["):
+            matches = _glob.glob(resolved, recursive=True)
+        else:
+            matches = [resolved] if Path(resolved).exists() else []
+        for match in matches:
+            path = Path(match)
+            try:
+                if path.is_file():
+                    path.unlink()
+                    deleted.append(match)
+            except OSError:
+                pass
+    return deleted
+
+
 def _workspace_name(root: Path) -> str:
     try:
         with (root / "pixi.toml").open("rb") as fh:

@@ -1,33 +1,33 @@
-"""One loaded pipeline's workbench: add inputs + pick steps (left), tune the
-pipeline's settings (right), and queue jobs.
+"""One loaded pipeline's workbench.
 
-Built entirely from the pipeline model (:mod:`raggui.manifest`): the step
-checkboxes are the pipeline's steps in dependency order, and the Settings panel is
-generated from each step's tunable ``args`` (those with a default). Settings are
-shared by every input of this pipeline; the run identity (stem/output/input) comes
-per input.
+The flow is: pick the pipeline, configure it once (output base, which steps to run
++ the DAG, and the settings), then add the input files to process with it. So the
+configuration is pipeline-level (center column) and the inputs are a plain file
+list (right column) queued as a batch.
+
+There is no config-time gating: any steps can be selected. Whether a step actually
+runs for a given file is decided at run time (Snakemake-style) — a step is skipped
+if its inputs aren't available for that file, and Pixi's task caching skips steps
+whose outputs are already up to date. See jobs.worker.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
-    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -37,18 +37,24 @@ from raggui.gui.dag_view import DagView
 from raggui.gui.list_card import ListCard
 from raggui.gui.status_flash import StatusFlash
 from raggui.jobs.job import Job
-from raggui.manifest import Pipeline, Step, step_inputs_met
+from raggui.manifest import Pipeline
 
 
 def _pretty(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize()
 
 
-def _hline() -> QFrame:
-    line = QFrame()
-    line.setFrameShape(QFrame.Shape.HLine)
-    line.setFrameShadow(QFrame.Shadow.Sunken)
-    return line
+def _section(title: str, body: QWidget) -> QWidget:
+    """A titled vertical section: a bold header above ``body``."""
+    w = QWidget()
+    v = QVBoxLayout(w)
+    v.setContentsMargins(12, 8, 12, 8)
+    v.setSpacing(6)
+    header = QLabel(f"<b>{title}</b>")
+    header.setTextFormat(Qt.TextFormat.RichText)
+    v.addWidget(header)
+    v.addWidget(body, 1)
+    return w
 
 
 def _inputs_from_urls(urls) -> list[Path]:
@@ -57,213 +63,100 @@ def _inputs_from_urls(urls) -> list[Path]:
     ]
 
 
-class _InputPanel(QWidget):
-    """Per-input controls: gated step checkboxes, output base, a DAG view, queue.
+class PipelineView(QWidget):
+    """Configure a pipeline (output / steps / settings) and queue input files."""
 
-    A step is enabled only when its inputs are satisfiable — by the dropped file,
-    by an artifact already on disk under the output base, or by another currently
-    selected step's outputs. Deselecting a step cascades to anything that depended
-    on it. The DAG below mirrors the selection (unselected steps greyed)."""
-
-    queue_requested = Signal(object)  # self
-
-    def __init__(self, pipeline: Pipeline, input_path: Path, output_base: Path | None) -> None:
-        super().__init__()
+    def __init__(self, pipeline: Pipeline, queue, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
         self._pipeline = pipeline
-        self._input = input_path
+        self._queue = queue
         self._order = pipeline.order()
+        self._settings = pipeline.default_settings()
+        self._selected: set[str] = {s.name for s in self._order if not s.optional}
         self._checks: dict[str, QCheckBox] = {}
-        self._selected: set[str] = set()
         self._syncing = False
+        self._files: list[Path] = []
+        self.setAcceptDrops(True)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(10)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        split = QSplitter(Qt.Orientation.Horizontal, self)
+        split.addWidget(self._build_center())
+        split.addWidget(self._build_inputs())
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 0)
+        split.setSizes([760, 300])
+        layout.addWidget(split)
 
-        title = QLabel(f"<b>{input_path.name}</b>")
-        title.setTextFormat(Qt.TextFormat.RichText)
-        root.addWidget(title)
-        path_lbl = QLabel(str(input_path))
-        path_lbl.setStyleSheet("color: #888;")
-        path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        root.addWidget(path_lbl)
+        self._refresh()
+        self._update_queue_enabled()
 
-        root.addWidget(_hline())
-        heading = QLabel("<b>Steps to run</b>")
-        heading.setTextFormat(Qt.TextFormat.RichText)
-        root.addWidget(heading)
+    # --- center: configuration ----------------------------------------------
 
+    def _build_center(self) -> QWidget:
+        center = QSplitter(Qt.Orientation.Vertical)
+        center.addWidget(_section("Output base", self._build_output()))
+        center.addWidget(_section("Steps", self._build_steps()))
+        center.addWidget(_section("Settings", self._build_settings()))
+        center.setStretchFactor(0, 0)
+        center.setStretchFactor(1, 0)
+        center.setStretchFactor(2, 1)
+        center.setSizes([72, 250, 380])
+        return center
+
+    def _build_output(self) -> QWidget:
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(6)
+        row = QHBoxLayout()
+        self._out_edit = QLineEdit(str(load_output_base() or ""))
+        self._out_edit.setReadOnly(True)
+        self._out_edit.setPlaceholderText("Choose an output directory…")
+        self._out_edit.setToolTip(self._out_edit.text())
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self._browse_output)
+        row.addWidget(QLabel("Directory:"))
+        row.addWidget(self._out_edit, 1)
+        row.addWidget(browse)
+        v.addLayout(row)
+        self._overwrite = QCheckBox("Re-run steps even if their outputs already exist (overwrite)")
+        self._overwrite.setToolTip(
+            "Off: a step whose output is already up to date is skipped.\n"
+            "On: that step's existing outputs are deleted so it runs again."
+        )
+        v.addWidget(self._overwrite)
+        return w
+
+    def _build_steps(self) -> QWidget:
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(4)
         for step in self._order:
             label = f"{step.label}  (optional)" if step.optional else step.label
             cb = QCheckBox(label)
-            cb.setToolTip(self._tooltip(step))
+            tip = f"{step.name}  (env: {step.env})"
+            if step.description:
+                tip += f"\n{step.description}"
+            cb.setToolTip(tip)
             cb.toggled.connect(lambda checked, n=step.name: self._on_toggle(n, checked))
             self._checks[step.name] = cb
-            root.addWidget(cb)
-        if not pipeline.steps:
+            v.addWidget(cb)
+        if not self._pipeline.steps:
             warn = QLabel("This pipeline declares no steps (tasks with inputs/outputs).")
             warn.setStyleSheet("color: #d0883a;")
-            root.addWidget(warn)
-
+            v.addWidget(warn)
         self._status = QLabel()
         self._status.setWordWrap(True)
-        root.addWidget(self._status)
-
-        root.addWidget(_hline())
-        out_row = QHBoxLayout()
-        out_row.addWidget(QLabel("Output base:"))
-        self._out_edit = QLineEdit(str(output_base) if output_base else "")
-        self._out_edit.setReadOnly(True)
-        self._out_edit.setPlaceholderText("Choose an output directory…")
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse_output)
-        out_row.addWidget(self._out_edit, 1)
-        out_row.addWidget(browse)
-        root.addLayout(out_row)
-
-        # Rendered DAG of the steps, mirroring the selection. Clicking a node
-        # toggles that step (with the same gating as the checkboxes).
-        self._dag = DagView(pipeline)
+        v.addWidget(self._status)
+        self._dag = DagView(self._pipeline)
         self._dag.step_clicked.connect(self._on_dag_click)
-        if pipeline.steps:
-            dag_heading = QLabel("Pipeline")
-            dag_heading.setStyleSheet("color: #888; padding-top: 4px;")
-            root.addWidget(dag_heading)
-            root.addWidget(self._dag)
+        v.addWidget(self._dag)
+        v.addStretch(1)
+        return w
 
-        root.addStretch(1)
-        queue_row = QHBoxLayout()
-        self._queue_btn = QPushButton("Add to Queue")
-        self._queue_btn.clicked.connect(lambda: self.queue_requested.emit(self))
-        self._flash = StatusFlash()
-        queue_row.addStretch(1)
-        queue_row.addWidget(self._flash)
-        queue_row.addWidget(self._queue_btn)
-        root.addLayout(queue_row)
-
-        # Default: every required (non-optional) step, then drop any that aren't
-        # actually satisfiable from this input + on-disk artifacts.
-        self._selected = {s.name for s in self._order if not s.optional}
-        self._recompute()
-
-    def _tooltip(self, step: Step) -> str:
-        tip = f"{step.name}  (env: {step.env})"
-        if step.description:
-            tip += f"\n{step.description}"
-        return tip
-
-    @property
-    def input_path(self) -> Path:
-        return self._input
-
-    @property
-    def stem(self) -> str:
-        return self._input.stem
-
-    def selected_steps(self) -> list[str]:
-        return [s.name for s in self._order if s.name in self._selected]
-
-    def output_base(self) -> Path | None:
-        text = self._out_edit.text().strip()
-        return Path(text) if text else None
-
-    def confirm_added(self) -> None:
-        self._flash.flash("Added to queue ✓")
-
-    # --- gating --------------------------------------------------------------
-
-    def _satisfiable(self, step: Step, others: set[str]) -> bool:
-        produced = {o for n in others for o in self._pipeline.step(n).outputs}
-        return step_inputs_met(
-            step,
-            has_input=True,
-            output_base=self.output_base(),
-            stem=self.stem,
-            produced=produced,
-        )
-
-    def _on_toggle(self, name: str, checked: bool) -> None:
-        if self._syncing:
-            return
-        step = self._pipeline.step(name)
-        if step is None:
-            return
-        if checked:
-            if self._satisfiable(step, self._selected - {name}):
-                self._selected.add(name)
-        else:
-            self._selected.discard(name)
-        self._recompute()
-
-    def _on_dag_click(self, name: str) -> None:
-        """Toggle a step from the DAG, honouring the same gating."""
-        step = self._pipeline.step(name)
-        if step is None:
-            return
-        if name in self._selected:
-            self._selected.discard(name)
-        elif self._satisfiable(step, self._selected - {name}):
-            self._selected.add(name)
-        self._recompute()
-
-    def _recompute(self) -> None:
-        # Cascade: drop any selected step whose inputs are no longer satisfiable.
-        changed = True
-        while changed:
-            changed = False
-            for step in self._order:
-                if step.name in self._selected and not self._satisfiable(
-                    step, self._selected - {step.name}
-                ):
-                    self._selected.discard(step.name)
-                    changed = True
-        self._syncing = True
-        for step in self._order:
-            cb = self._checks[step.name]
-            cb.setChecked(step.name in self._selected)
-            cb.setEnabled(self._satisfiable(step, self._selected - {step.name}))
-        self._syncing = False
-        self._dag.set_selected(set(self._selected))
-        self._update_status()
-
-    def _update_status(self) -> None:
-        if not self._pipeline.steps:
-            return
-        chain = [self._pipeline.step(n).label for n in self.selected_steps()]
-        if chain:
-            self._status.setText("Will run:  " + " → ".join(chain))
-            self._status.setStyleSheet("color: #4caf50;")
-        else:
-            self._status.setText(
-                "Pick a step to run — only steps whose inputs are available are enabled."
-            )
-            self._status.setStyleSheet("color: #d0883a;")
-
-    def _browse_output(self) -> None:
-        chosen = QFileDialog.getExistingDirectory(self, "Choose output base", self._out_edit.text())
-        if chosen:
-            self._out_edit.setText(chosen)
-            self._out_edit.setToolTip(chosen)
-            save_output_base(Path(chosen))
-            self._recompute()  # existing outputs may enable more steps
-
-
-class _SettingsPanel(QWidget):
-    """Right-hand panel: the pipeline's tunable args, grouped by step. Edits write
-    into the shared ``values`` dict in place."""
-
-    def __init__(self, pipeline: Pipeline, values: dict[str, str]) -> None:
-        super().__init__()
-        self._values = values
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(12, 16, 12, 12)
-        root.setSpacing(8)
-        intro = QLabel("<b>Settings</b> — applied to every input of this pipeline.")
-        intro.setTextFormat(Qt.TextFormat.RichText)
-        intro.setWordWrap(True)
-        root.addWidget(intro)
-
+    def _build_settings(self) -> QWidget:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -271,9 +164,11 @@ class _SettingsPanel(QWidget):
         outer = QVBoxLayout(container)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(10)
-
+        note = QLabel("Applied to every input of this pipeline.")
+        note.setStyleSheet("color: #888;")
+        outer.addWidget(note)
         any_settings = False
-        for step in pipeline.order():
+        for step in self._order:
             sargs = step.setting_args
             if not sargs:
                 continue
@@ -282,162 +177,167 @@ class _SettingsPanel(QWidget):
             form = QFormLayout(box)
             form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
             for arg in sargs:
-                widget = self._make_widget(arg.name, arg.default or "", arg.choices)
-                label = QLabel(_pretty(arg.name))
-                form.addRow(label, widget)
+                form.addRow(QLabel(_pretty(arg.name)), self._setting_widget(arg))
             outer.addWidget(box)
         if not any_settings:
             outer.addWidget(QLabel("This pipeline exposes no settings."))
         outer.addStretch(1)
         scroll.setWidget(container)
-        root.addWidget(scroll, 1)
+        return scroll
 
-    def _make_widget(self, name: str, default: str, choices: tuple[str, ...] | None) -> QWidget:
-        current = self._values.get(name, default)
-        if choices:
-            w = QComboBox()
-            w.addItems(list(choices))
-            if current in choices:
-                w.setCurrentText(current)
-            w.currentTextChanged.connect(lambda t, n=name: self._values.__setitem__(n, t))
-            return w
+    def _setting_widget(self, arg) -> QWidget:
+        name = arg.name
+        current = self._settings.get(name, arg.default or "")
+        if arg.choices:
+            combo = QComboBox()
+            combo.addItems(list(arg.choices))
+            if current in arg.choices:
+                combo.setCurrentText(current)
+            combo.currentTextChanged.connect(lambda t, n=name: self._settings.__setitem__(n, t))
+            return combo
         edit = QLineEdit(current)
-        edit.textChanged.connect(lambda t, n=name: self._values.__setitem__(n, t))
+        edit.textChanged.connect(lambda t, n=name: self._settings.__setitem__(n, t))
         return edit
 
+    # --- right: inputs -------------------------------------------------------
 
-class PipelineView(QWidget):
-    """The workbench for one loaded pipeline."""
+    def _build_inputs(self) -> QWidget:
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(8, 8, 8, 8)
+        card = ListCard("Inputs")
+        self._files_list = card.list
+        self._files_list.currentRowChanged.connect(lambda r: self._remove_btn.setEnabled(r >= 0))
+        v.addWidget(card, 1)
 
-    def __init__(self, pipeline: Pipeline, queue, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._pipeline = pipeline
-        self._queue = queue
-        self._settings = pipeline.default_settings()
-        self._panels: list[_InputPanel] = []
-        self.setAcceptDrops(True)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
-
-        # Left: input list + per-input panels.
-        left = QWidget()
-        lv = QVBoxLayout(left)
-        lv.setContentsMargins(8, 8, 8, 8)
-        inputs_card = ListCard("Inputs")
-        self._list = inputs_card.list
-        self._list.currentRowChanged.connect(self._on_selected)
-        lv.addWidget(inputs_card, 1)
         add_btn = QPushButton("Add files…")
         add_btn.clicked.connect(self._browse_inputs)
-        lv.addWidget(add_btn)
-        row = QHBoxLayout()
+        v.addWidget(add_btn)
         self._remove_btn = QPushButton("Remove")
         self._remove_btn.setEnabled(False)
         self._remove_btn.clicked.connect(self._remove_current)
-        self._queue_all_btn = QPushButton("Add all to queue")
-        self._queue_all_btn.setEnabled(False)
-        self._queue_all_btn.clicked.connect(self._queue_all)
-        row.addWidget(self._remove_btn)
-        row.addWidget(self._queue_all_btn)
-        lv.addLayout(row)
+        v.addWidget(self._remove_btn)
 
-        # Center: stacked per-input panels (+ placeholder).
-        center = QWidget()
-        cv = QVBoxLayout(center)
-        cv.setContentsMargins(0, 0, 0, 0)
-        self._stack = QStackedWidget()
-        self._placeholder = QLabel(
-            "Add one or more input files to run this pipeline on.\nDrag files here too."
-        )
-        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._placeholder.setStyleSheet("color: #888;")
-        self._stack.addWidget(self._placeholder)
-        cv.addWidget(self._stack, 1)
-
-        # Right: settings.
-        self._settings_panel = _SettingsPanel(pipeline, self._settings)
-
-        splitter.addWidget(left)
-        splitter.addWidget(center)
-        splitter.addWidget(self._settings_panel)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
-        splitter.setSizes([220, 620, 320])
-        layout.addWidget(splitter)
-
-    # --- public API ----------------------------------------------------------
-
-    @property
-    def pipeline(self) -> Pipeline:
-        return self._pipeline
+        self._queue_btn = QPushButton("Add to Queue")
+        self._queue_btn.clicked.connect(self._queue_all)
+        v.addWidget(self._queue_btn)
+        self._flash = StatusFlash()
+        v.addWidget(self._flash)
+        return w
 
     def add_inputs(self, paths: list[Path]) -> None:
-        first = len(self._panels)
         for path in paths:
-            panel = _InputPanel(self._pipeline, path, load_output_base())
-            panel.queue_requested.connect(self._queue_panel)
-            self._stack.addWidget(panel)
-            self._panels.append(panel)
-            self._list.addItem(path.name)
-        if self._panels:
-            self._list.setCurrentRow(first if first < len(self._panels) else len(self._panels) - 1)
-            self._queue_all_btn.setEnabled(True)
-
-    # --- internals -----------------------------------------------------------
+            self._files.append(path)
+            self._files_list.addItem(path.name)
+        if self._files:
+            self._files_list.setCurrentRow(len(self._files) - 1)
+        self._update_queue_enabled()
 
     def _browse_inputs(self) -> None:
-        base = load_output_base()
-        start = str(base.parent) if base else ""
-        files, _ = QFileDialog.getOpenFileNames(self, "Add files", start, "All files (*)")
+        base = self.output_base() or load_output_base()
+        files, _ = QFileDialog.getOpenFileNames(self, "Add files", str(base or ""), "All files (*)")
         if files:
             self.add_inputs([Path(f) for f in files])
 
-    def _on_selected(self, row: int) -> None:
-        if 0 <= row < len(self._panels):
-            self._stack.setCurrentWidget(self._panels[row])
-            self._remove_btn.setEnabled(True)
-        else:
-            self._stack.setCurrentWidget(self._placeholder)
-            self._remove_btn.setEnabled(False)
-
     def _remove_current(self) -> None:
-        row = self._list.currentRow()
-        if not (0 <= row < len(self._panels)):
-            return
-        panel = self._panels.pop(row)
-        self._stack.removeWidget(panel)
-        panel.deleteLater()
-        self._list.takeItem(row)
-        if not self._panels:
-            self._stack.setCurrentWidget(self._placeholder)
-            self._remove_btn.setEnabled(False)
-            self._queue_all_btn.setEnabled(False)
-
-    def _queue_panel(self, panel: _InputPanel) -> None:
-        steps = panel.selected_steps()
-        if not steps:
-            QMessageBox.information(self, "Add to Queue", "Select at least one step to run.")
-            return
-        output_base = panel.output_base()
-        if output_base is None:
-            QMessageBox.information(self, "Add to Queue", "Choose an output directory first.")
-            return
-        job = Job(
-            pipeline=self._pipeline,
-            input_path=panel.input_path,
-            output_base=output_base,
-            steps=steps,
-            settings=dict(self._settings),  # snapshot the current settings
-        )
-        self._queue.submit(job)
-        panel.confirm_added()
+        row = self._files_list.currentRow()
+        if 0 <= row < len(self._files):
+            self._files.pop(row)
+            self._files_list.takeItem(row)
+            self._update_queue_enabled()
 
     def _queue_all(self) -> None:
-        for panel in self._panels:
-            self._queue_panel(panel)
+        output_base = self.output_base()
+        steps = self.selected_steps()
+        if not (self._files and steps and output_base):
+            return
+        for path in self._files:
+            self._queue.submit(
+                Job(
+                    pipeline=self._pipeline,
+                    input_path=path,
+                    output_base=output_base,
+                    steps=steps,
+                    settings=dict(self._settings),
+                    overwrite=self._overwrite.isChecked(),
+                )
+            )
+        n = len(self._files)
+        self._flash.flash(f"Added {n} file{'s' if n != 1 else ''} to queue ✓")
+
+    # --- output --------------------------------------------------------------
+
+    def output_base(self) -> Path | None:
+        text = self._out_edit.text().strip()
+        return Path(text) if text else None
+
+    def _browse_output(self) -> None:
+        chosen = QFileDialog.getExistingDirectory(self, "Choose output base", self._out_edit.text())
+        if chosen:
+            self._out_edit.setText(chosen)
+            self._out_edit.setToolTip(chosen)
+            save_output_base(Path(chosen))
+            self._update_queue_enabled()
+
+    # --- steps (free selection; run-time decides what actually runs) ---------
+
+    def selected_steps(self) -> list[str]:
+        return [s.name for s in self._order if s.name in self._selected]
+
+    def _on_toggle(self, name: str, checked: bool) -> None:
+        if self._syncing:
+            return
+        if checked:
+            self._selected.add(name)
+        else:
+            self._selected.discard(name)
+        self._refresh()
+
+    def _on_dag_click(self, name: str) -> None:
+        if name in self._selected:
+            self._selected.discard(name)
+        else:
+            self._selected.add(name)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._syncing = True
+        for step in self._order:
+            self._checks[step.name].setChecked(step.name in self._selected)
+        self._syncing = False
+        self._dag.set_selected(set(self._selected))
+        self._update_status()
+        self._update_queue_enabled()
+
+    def _update_status(self) -> None:
+        if not self._pipeline.steps:
+            return
+        chain = [self._pipeline.step(n).label for n in self.selected_steps()]
+        if chain:
+            self._status.setText(
+                "Will run:  "
+                + " → ".join(chain)
+                + "   (steps whose inputs aren't ready are skipped per file)"
+            )
+            self._status.setStyleSheet("color: #4caf50;")
+        else:
+            self._status.setText("Pick at least one step to run.")
+            self._status.setStyleSheet("color: #d0883a;")
+
+    def _update_queue_enabled(self) -> None:
+        missing = []
+        if self.output_base() is None:
+            missing.append("an output directory")
+        if not self._selected:
+            missing.append("a step")
+        if not self._files:
+            missing.append("input files")
+        self._queue_btn.setEnabled(not missing)
+        self._queue_btn.setToolTip(
+            "" if not missing else "Choose " + ", ".join(missing) + " first."
+        )
+
+    # --- drag & drop ---------------------------------------------------------
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         if _inputs_from_urls(event.mimeData().urls()):
