@@ -8,7 +8,7 @@ are just standalone nodes in the first column.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRectF, Qt
+from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -24,7 +24,10 @@ _ACCENT = "#4a9eff"
 
 
 class DagView(QWidget):
-    """Paints the pipeline graph; ``set_selected`` recolours it."""
+    """Paints the pipeline graph; nodes are clickable + hoverable, ``set_selected``
+    recolours it."""
+
+    step_clicked = Signal(str)
 
     def __init__(self, pipeline: Pipeline, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -35,11 +38,33 @@ class DagView(QWidget):
         width = _MARGIN * 2 + self._cols * (_NODE_W + _HGAP) - _HGAP if self._cols else 0
         height = _MARGIN * 2 + self._rows * (_NODE_H + _VGAP) - _VGAP if self._rows else 0
         self.setMinimumSize(max(width, 0), max(height, 0))
+        self.setMouseTracking(True)
         watch_app_palette(self, self.update)
 
     def set_selected(self, names: set[str]) -> None:
         self._selected = set(names)
         self.update()
+
+    # --- interaction ---------------------------------------------------------
+
+    def _node_at(self, pos) -> str | None:
+        return next((name for name in self._pos if self._rect(name).contains(pos)), None)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.button() == Qt.MouseButton.LeftButton:
+            name = self._node_at(event.position())
+            if name is not None:
+                self.step_clicked.emit(name)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        name = self._node_at(event.position())
+        if name is not None:
+            step = self._pipeline.step(name)
+            self.setToolTip((step.description if step else "") or name)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.setToolTip("")
+            self.unsetCursor()
 
     # --- layout --------------------------------------------------------------
 

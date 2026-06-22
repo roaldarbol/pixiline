@@ -8,16 +8,11 @@ be loaded at once and jobs queued from each.
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (
-    QListWidget,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
-from raggui.gui.constants import PANEL_MARGIN, panel_header
+from raggui.gui.constants import PANEL_MARGIN
 from raggui.gui.drop_screen import _roots_from_urls
-from raggui.gui.theme import border_color, primary_surface, watch_app_palette
+from raggui.gui.list_card import ListCard
 
 
 class PipelinesSidebar(QWidget):
@@ -32,14 +27,12 @@ class PipelinesSidebar(QWidget):
         self.setAcceptDrops(True)
 
         v = QVBoxLayout(self)
-        v.setContentsMargins(PANEL_MARGIN, 0, PANEL_MARGIN, PANEL_MARGIN)
-        v.addWidget(panel_header("<b>Pipelines</b>"))
+        v.setContentsMargins(PANEL_MARGIN, PANEL_MARGIN, PANEL_MARGIN, PANEL_MARGIN)
 
-        self.list = QListWidget()
+        card = ListCard("Pipelines")
+        self.list = card.list
         self.list.currentRowChanged.connect(self.selected)
-        v.addWidget(self.list, 1)
-        self._apply_list_theme()
-        watch_app_palette(self.list, self._apply_list_theme)
+        v.addWidget(card, 1)
 
         self.add_btn = QPushButton("Add pipeline…")
         self.add_btn.clicked.connect(self._browse)
@@ -51,12 +44,6 @@ class PipelinesSidebar(QWidget):
         v.addWidget(self.remove_btn)
 
         self.list.currentRowChanged.connect(lambda r: self.remove_btn.setEnabled(r >= 0))
-
-    def _apply_list_theme(self) -> None:
-        self.list.setStyleSheet(
-            f"QListWidget {{ background-color: {primary_surface().name()}; "
-            f"border: 1px solid {border_color().name()}; border-radius: 6px; }}"
-        )
 
     # --- public API ----------------------------------------------------------
 

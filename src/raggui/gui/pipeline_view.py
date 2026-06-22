@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -35,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from raggui.config import load_output_base, save_output_base
 from raggui.gui.dag_view import DagView
+from raggui.gui.list_card import ListCard
 from raggui.gui.status_flash import StatusFlash
 from raggui.jobs.job import Job
 from raggui.manifest import Pipeline, Step, step_inputs_met
@@ -121,8 +121,10 @@ class _InputPanel(QWidget):
         out_row.addWidget(browse)
         root.addLayout(out_row)
 
-        # Rendered DAG of the steps, mirroring the selection.
+        # Rendered DAG of the steps, mirroring the selection. Clicking a node
+        # toggles that step (with the same gating as the checkboxes).
         self._dag = DagView(pipeline)
+        self._dag.step_clicked.connect(self._on_dag_click)
         if pipeline.steps:
             dag_heading = QLabel("Pipeline")
             dag_heading.setStyleSheet("color: #888; padding-top: 4px;")
@@ -191,6 +193,17 @@ class _InputPanel(QWidget):
                 self._selected.add(name)
         else:
             self._selected.discard(name)
+        self._recompute()
+
+    def _on_dag_click(self, name: str) -> None:
+        """Toggle a step from the DAG, honouring the same gating."""
+        step = self._pipeline.step(name)
+        if step is None:
+            return
+        if name in self._selected:
+            self._selected.discard(name)
+        elif self._satisfiable(step, self._selected - {name}):
+            self._selected.add(name)
         self._recompute()
 
     def _recompute(self) -> None:
@@ -312,9 +325,10 @@ class PipelineView(QWidget):
         left = QWidget()
         lv = QVBoxLayout(left)
         lv.setContentsMargins(8, 8, 8, 8)
-        self._list = QListWidget()
+        inputs_card = ListCard("Inputs")
+        self._list = inputs_card.list
         self._list.currentRowChanged.connect(self._on_selected)
-        lv.addWidget(self._list, 1)
+        lv.addWidget(inputs_card, 1)
         add_btn = QPushButton("Add files…")
         add_btn.clicked.connect(self._browse_inputs)
         lv.addWidget(add_btn)
