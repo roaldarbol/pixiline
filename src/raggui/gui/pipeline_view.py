@@ -1,6 +1,6 @@
 """One loaded pipeline's workbench.
 
-The flow is: pick the pipeline, configure it once (output base, which steps to run
+The flow is: pick the pipeline, configure it once (destination, which steps to run
 + the DAG, and the settings), then add the input files to process with it. So the
 configuration is pipeline-level (center column) and the inputs are a plain file
 list (right column) queued as a batch.
@@ -33,28 +33,23 @@ from PySide6.QtWidgets import (
 )
 
 from raggui.config import load_output_base, save_output_base
+from raggui.gui.card import Card
 from raggui.gui.dag_view import DagView
 from raggui.gui.list_card import ListCard
 from raggui.gui.status_flash import StatusFlash
 from raggui.jobs.job import Job
 from raggui.manifest import Pipeline
 
+_QUEUE_BTN_QSS = (
+    "QPushButton { background: #3b82f6; color: white; border: none; border-radius: 6px;"
+    " padding: 9px 12px; font-weight: 600; }"
+    "QPushButton:hover { background: #2f74e0; }"
+    "QPushButton:disabled { background: #9bb4dd; color: #eef2fb; }"
+)
+
 
 def _pretty(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize()
-
-
-def _section(title: str, body: QWidget) -> QWidget:
-    """A titled vertical section: a bold header above ``body``."""
-    w = QWidget()
-    v = QVBoxLayout(w)
-    v.setContentsMargins(12, 8, 12, 8)
-    v.setSpacing(6)
-    header = QLabel(f"<b>{title}</b>")
-    header.setTextFormat(Qt.TextFormat.RichText)
-    v.addWidget(header)
-    v.addWidget(body, 1)
-    return w
 
 
 def _inputs_from_urls(urls) -> list[Path]:
@@ -64,7 +59,7 @@ def _inputs_from_urls(urls) -> list[Path]:
 
 
 class PipelineView(QWidget):
-    """Configure a pipeline (output / steps / settings) and queue input files."""
+    """Configure a pipeline (destination / steps / settings) and queue input files."""
 
     def __init__(self, pipeline: Pipeline, queue, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -94,67 +89,72 @@ class PipelineView(QWidget):
     # --- center: configuration ----------------------------------------------
 
     def _build_center(self) -> QWidget:
+        wrap = QWidget()
+        v = QVBoxLayout(wrap)
+        v.setContentsMargins(10, 10, 6, 10)
         center = QSplitter(Qt.Orientation.Vertical)
-        center.addWidget(_section("Output base", self._build_output()))
-        center.addWidget(_section("Steps", self._build_steps()))
-        center.addWidget(_section("Settings", self._build_settings()))
+        center.addWidget(Card("Destination", self._build_output()))
+        center.addWidget(Card("Steps", self._build_steps()))
+        center.addWidget(Card("Settings", self._build_settings()))
         center.setStretchFactor(0, 0)
         center.setStretchFactor(1, 0)
         center.setStretchFactor(2, 1)
-        center.setSizes([72, 250, 380])
-        return center
+        center.setSizes([86, 280, 360])
+        v.addWidget(center)
+        return wrap
 
     def _build_output(self) -> QWidget:
         w = QWidget()
-        v = QVBoxLayout(w)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(6)
-        row = QHBoxLayout()
+        row = QHBoxLayout(w)
+        row.setContentsMargins(0, 0, 0, 0)
         self._out_edit = QLineEdit(str(load_output_base() or ""))
         self._out_edit.setReadOnly(True)
         self._out_edit.setPlaceholderText("Choose an output directory…")
         self._out_edit.setToolTip(self._out_edit.text())
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_output)
-        row.addWidget(QLabel("Directory:"))
         row.addWidget(self._out_edit, 1)
         row.addWidget(browse)
-        v.addLayout(row)
-        self._overwrite = QCheckBox("Re-run steps even if their outputs already exist (overwrite)")
-        self._overwrite.setToolTip(
-            "Off: a step whose output is already up to date is skipped.\n"
-            "On: that step's existing outputs are deleted so it runs again."
-        )
-        v.addWidget(self._overwrite)
         return w
 
     def _build_steps(self) -> QWidget:
-        w = QWidget()
-        v = QVBoxLayout(w)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(4)
+        body = QWidget()
+        h = QHBoxLayout(body)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(18)
+
+        left = QWidget()
+        lv = QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.setSpacing(2)
         for step in self._order:
             label = f"{step.label}  (optional)" if step.optional else step.label
             cb = QCheckBox(label)
-            tip = f"{step.name}  (env: {step.env})"
-            if step.description:
-                tip += f"\n{step.description}"
-            cb.setToolTip(tip)
             cb.toggled.connect(lambda checked, n=step.name: self._on_toggle(n, checked))
             self._checks[step.name] = cb
-            v.addWidget(cb)
+            lv.addWidget(cb)
+            desc = step.description
+            if step.optional:
+                desc = desc.replace("[optional]", "").replace("[OPTIONAL]", "").strip()
+            if desc:
+                d = QLabel(desc)
+                d.setWordWrap(True)
+                d.setStyleSheet("color: #888; margin-left: 22px; padding-bottom: 4px;")
+                lv.addWidget(d)
         if not self._pipeline.steps:
             warn = QLabel("This pipeline declares no steps (tasks with inputs/outputs).")
             warn.setStyleSheet("color: #d0883a;")
-            v.addWidget(warn)
+            lv.addWidget(warn)
         self._status = QLabel()
         self._status.setWordWrap(True)
-        v.addWidget(self._status)
+        lv.addWidget(self._status)
+        lv.addStretch(1)
+        h.addWidget(left, 1)
+
         self._dag = DagView(self._pipeline)
         self._dag.step_clicked.connect(self._on_dag_click)
-        v.addWidget(self._dag)
-        v.addStretch(1)
-        return w
+        h.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignTop)
+        return body
 
     def _build_settings(self) -> QWidget:
         scroll = QScrollArea()
@@ -204,7 +204,7 @@ class PipelineView(QWidget):
     def _build_inputs(self) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
-        v.setContentsMargins(8, 8, 8, 8)
+        v.setContentsMargins(6, 10, 10, 10)
         card = ListCard("Inputs")
         self._files_list = card.list
         self._files_list.currentRowChanged.connect(lambda r: self._remove_btn.setEnabled(r >= 0))
@@ -218,11 +218,13 @@ class PipelineView(QWidget):
         self._remove_btn.clicked.connect(self._remove_current)
         v.addWidget(self._remove_btn)
 
-        self._queue_btn = QPushButton("Add to Queue")
-        self._queue_btn.clicked.connect(self._queue_all)
-        v.addWidget(self._queue_btn)
+        v.addStretch(1)  # pin the queue button to the bottom
         self._flash = StatusFlash()
         v.addWidget(self._flash)
+        self._queue_btn = QPushButton("Add to Queue")
+        self._queue_btn.setStyleSheet(_QUEUE_BTN_QSS)
+        self._queue_btn.clicked.connect(self._queue_all)
+        v.addWidget(self._queue_btn)
         return w
 
     def add_inputs(self, paths: list[Path]) -> None:
@@ -259,20 +261,19 @@ class PipelineView(QWidget):
                     output_base=output_base,
                     steps=steps,
                     settings=dict(self._settings),
-                    overwrite=self._overwrite.isChecked(),
                 )
             )
         n = len(self._files)
         self._flash.flash(f"Added {n} file{'s' if n != 1 else ''} to queue ✓")
 
-    # --- output --------------------------------------------------------------
+    # --- destination ---------------------------------------------------------
 
     def output_base(self) -> Path | None:
         text = self._out_edit.text().strip()
         return Path(text) if text else None
 
     def _browse_output(self) -> None:
-        chosen = QFileDialog.getExistingDirectory(self, "Choose output base", self._out_edit.text())
+        chosen = QFileDialog.getExistingDirectory(self, "Choose destination", self._out_edit.text())
         if chosen:
             self._out_edit.setText(chosen)
             self._out_edit.setToolTip(chosen)
@@ -327,7 +328,7 @@ class PipelineView(QWidget):
     def _update_queue_enabled(self) -> None:
         missing = []
         if self.output_base() is None:
-            missing.append("an output directory")
+            missing.append("a destination")
         if not self._selected:
             missing.append("a step")
         if not self._files:

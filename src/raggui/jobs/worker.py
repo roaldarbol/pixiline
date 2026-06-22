@@ -20,7 +20,7 @@ from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from raggui import applog
 from raggui.jobs.job import Job, JobState
 from raggui.jobs.termlog import SettledLog
-from raggui.manifest import build_command, clear_outputs, step_inputs_met
+from raggui.manifest import build_command, step_inputs_met
 from raggui.paths import pixi_executable
 
 _KILL_GRACE_MS = 3000
@@ -180,12 +180,6 @@ class Worker(QObject):
                 self.progress.emit(self._job.id, self._job.fraction())
                 continue
             break
-        if self._job.overwrite:  # delete existing outputs so the step re-runs
-            removed = clear_outputs(step, self._job.output_base, self._job.stem)
-            if removed:
-                self._emit_log(
-                    f"\n[overwrite: removed {len(removed)} existing output(s) for '{name}']\n"
-                )
         applog.log.info(f"Job {self._job.id}: step '{name}' running")
         self.step_changed.emit(self._job.id, self._job.current_step, name)
         self.progress.emit(self._job.id, self._job.fraction())

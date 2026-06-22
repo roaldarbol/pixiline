@@ -43,7 +43,6 @@ class Job:
     output_base: Path
     steps: list[str]  # step names
     settings: dict[str, str] = field(default_factory=dict)  # pipeline-level tunables
-    overwrite: bool = False  # re-run steps even if their outputs already exist
     id: int = field(default_factory=_next_job_id)
     state: JobState = JobState.QUEUED
     current_step: int = 0  # index into steps of the step now running / next

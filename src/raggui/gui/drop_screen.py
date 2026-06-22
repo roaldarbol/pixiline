@@ -50,6 +50,7 @@ class DropScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAcceptDrops(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         v = QVBoxLayout(self)
         v.addStretch(1)
@@ -91,6 +92,13 @@ class DropScreen(QWidget):
             root = pipeline_root_from(Path(chosen))
             if root is not None:
                 self.pipeline_chosen.emit(root)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._browse()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         if _roots_from_urls(event.mimeData().urls()):

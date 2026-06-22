@@ -27,31 +27,36 @@ def _wire_pen(color: QColor, width: float = 1.6) -> QPen:
 
 
 def _draw_pipelines(p: QPainter, r: QRectF, color: QColor) -> None:
-    """A tiny node graph (two inputs wired into one) — the pipeline/DAG motif."""
-    p.setPen(_wire_pen(color))
+    """A workflow / flowchart: two boxes merging into one (icons8 'workflow' motif)."""
+    p.setPen(_wire_pen(color, 1.5))
     p.setBrush(Qt.BrushStyle.NoBrush)
-    rad = r.width() * 0.11
-    x0 = r.left() + r.width() * 0.26
-    x1 = r.left() + r.width() * 0.74
-    y0 = r.top() + r.height() * 0.26
-    y1 = r.top() + r.height() * 0.74
-    ym = r.center().y()
-    p.drawLine(QPointF(x0, y0), QPointF(x1, ym))
-    p.drawLine(QPointF(x0, y1), QPointF(x1, ym))
-    for cx, cy in ((x0, y0), (x0, y1), (x1, ym)):
-        p.drawEllipse(QPointF(cx, cy), rad, rad)
+    bw = r.width() * 0.42
+    bh = r.height() * 0.30
+    lt = QRectF(r.left(), r.top(), bw, bh)
+    lb = QRectF(r.left(), r.bottom() - bh, bw, bh)
+    rm = QRectF(r.right() - bw, r.center().y() - bh / 2, bw, bh)
+    midx = (lt.right() + rm.left()) / 2
+    for box in (lt, lb):  # elbow connectors into the right box
+        y = box.center().y()
+        p.drawLine(QPointF(box.right(), y), QPointF(midx, y))
+        p.drawLine(QPointF(midx, y), QPointF(midx, rm.center().y()))
+    p.drawLine(QPointF(midx, rm.center().y()), QPointF(rm.left(), rm.center().y()))
+    for box in (lt, lb, rm):
+        p.drawRoundedRect(box, 2.5, 2.5)
 
 
 def _draw_jobs(p: QPainter, r: QRectF, color: QColor) -> None:
-    """A small list/queue — bullets with lines."""
-    p.setPen(_wire_pen(color))
-    bx = r.left() + r.width() * 0.22
-    x1 = r.left() + r.width() * 0.40
-    x2 = r.right() - r.width() * 0.16
-    for f in (0.30, 0.50, 0.70):
+    """A checklist: ticks beside lines (fontawesome 'list-check' motif)."""
+    p.setPen(_wire_pen(color, 1.7))
+    cx = r.left() + r.width() * 0.08
+    s = r.height() * 0.11
+    x_line0 = r.left() + r.width() * 0.44
+    x_line1 = r.right() - r.width() * 0.04
+    for f in (0.20, 0.5, 0.80):
         y = r.top() + r.height() * f
-        p.drawEllipse(QPointF(bx, y), 1.5, 1.5)
-        p.drawLine(QPointF(x1, y), QPointF(x2, y))
+        p.drawLine(QPointF(cx, y), QPointF(cx + s, y + s))
+        p.drawLine(QPointF(cx + s, y + s), QPointF(cx + s * 2.3, y - s * 1.4))
+        p.drawLine(QPointF(x_line0, y), QPointF(x_line1, y))
 
 
 _ICONS: dict[str, Callable[[QPainter, QRectF, QColor], None]] = {
