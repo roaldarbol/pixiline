@@ -1,11 +1,10 @@
-"""QProcess-backed worker that runs a job's steps in sequence.
+"""QProcess-backed worker that runs a job's steps in dependency order.
 
 A job first installs the pixi environments its steps need ("Installing
 environments"), then runs each step as one ``pixi run`` process, advancing only
-when the current one exits 0 *and* produced its declared output. Stdout+stderr are
-merged and streamed live (control sequences intact) so the Jobs tab's terminal log
-shows in-place progress. Exactly one of ``finished`` / ``failed`` / ``canceled``
-fires.
+when the current one exits 0. Stdout+stderr are merged and streamed live (control
+sequences intact) so the Jobs tab's terminal log shows in-place progress. Exactly
+one of ``finished`` / ``failed`` / ``canceled`` fires.
 """
 
 from __future__ import annotations
@@ -21,15 +20,8 @@ from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from raggui import applog
 from raggui.jobs.job import Job, JobState
 from raggui.jobs.termlog import SettledLog
+from raggui.manifest import build_command
 from raggui.paths import pixi_executable
-from raggui.pipeline import (
-    artifact_present,
-    build_command,
-    env_available,
-    missing_needs,
-    step_by_name,
-    working_directory,
-)
 
 _KILL_GRACE_MS = 3000
 _INSTALL_LABEL = "Installing environments"
@@ -68,7 +60,8 @@ class Worker(QObject):
         super().__init__(parent)
         self._job = job
         self._proc = QProcess(self)
-        self._proc.setWorkingDirectory(working_directory())
+        # Run from the pipeline's own workspace root (where its pixi.toml lives).
+        self._proc.setWorkingDirectory(str(job.pipeline.root))
         self._proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         # Stream live (no block-buffering when stdout isn't a TTY), force colour
         # on, and pin a width so progress bars size to the log terminal's screen.
@@ -108,7 +101,7 @@ class Worker(QObject):
         stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         self._logfile = SettledLog(self._job.output_base / self._job.stem / "logs" / f"{stamp}.log")
         applog.log.info(
-            f"Job {self._job.id} started: {self._job.stem} | "
+            f"Job {self._job.id} started: {self._job.pipeline.name} / {self._job.stem} | "
             f"steps: {', '.join(self._job.steps)} | output: {self._job.output_base}"
         )
         # A bold, coloured run header with a divider rule, to set this run apart
@@ -138,17 +131,16 @@ class Worker(QObject):
     def _start_install(self) -> None:
         """Install the pixi environments this job's steps need, up front."""
         self._phase = _PHASE_INSTALL
-        by_name = step_by_name()
+        pipeline = self._job.pipeline
         envs: list[str] = []
         for name in self._job.steps:
-            step = by_name.get(name)
+            step = pipeline.step(name)
             if step is None or not step.env:
                 continue
-            if not env_available(step.env):
+            if step.env not in pipeline.environments:
                 self._fail(
                     f"Step '{name}' needs environment '{step.env}', which isn't defined in "
-                    "pixi.toml (is it commented out?). Remove the step from config.yaml `steps:` "
-                    "or restore the environment."
+                    f"{pipeline.name}'s pixi.toml (is it commented out?)."
                 )
                 return
             if step.env not in envs:
@@ -165,26 +157,14 @@ class Worker(QObject):
         name = self._job.current_step_name()
         if name is None:
             return
-        step = step_by_name().get(name)
-        # Fail fast if a required input isn't there (a prior step didn't produce
-        # it, or the run started mid-chain without the prerequisites on disk).
-        if step is not None:
-            missing = missing_needs(
-                step, self._job.input_path, self._job.output_base, self._job.stem
-            )
-            if missing:
-                self._fail(f"Step '{name}' is missing required input(s): {', '.join(missing)}")
-                return
+        step = self._job.pipeline.step(name)
+        if step is None:
+            self._fail(f"Step '{name}' is not defined in the pipeline.")
+            return
         applog.log.info(f"Job {self._job.id}: step '{name}' running")
         self.step_changed.emit(self._job.id, self._job.current_step, name)
         self.progress.emit(self._job.id, self._job.fraction())
-        cmd = build_command(
-            name,
-            self._job.input_path,
-            self._job.output_base,
-            self._job.stem,
-            overwrite=self._job.overwrite,
-        )
+        cmd = build_command(step, self._job.values, pixi_executable())
         self._launch(cmd)
 
     def _launch(self, cmd: list[str]) -> None:
@@ -215,16 +195,6 @@ class Worker(QObject):
         name = self._job.current_step_name() or "?"
         if failed:
             self._fail(f"Step '{name}' failed (exit code {code}).")
-            return
-        # Exited 0 — but verify it actually produced its declared output, so a
-        # silent failure doesn't let the chain march on into missing data.
-        step = step_by_name().get(name)
-        if (
-            step
-            and step.makes
-            and not artifact_present(step.makes, self._job.output_base, self._job.stem)
-        ):
-            self._fail(f"Step '{name}' finished but did not produce its output: {step.makes}")
             return
         applog.log.info(f"Job {self._job.id}: step '{name}' done")
         self._job.current_step += 1

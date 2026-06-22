@@ -10,7 +10,6 @@ from PySide6.QtWidgets import QApplication
 
 from raggui import applog
 from raggui.gui.main_window import MainWindow
-from raggui.paths import workspace_title
 from raggui.resources import app_icon
 
 
@@ -18,10 +17,9 @@ def main() -> int:
     """Start the Qt event loop and return its exit code."""
     applog.setup()
     applog.install_excepthook()  # a crash leaves a traceback in the GUI log
-    title = workspace_title()
     qt_app = QApplication.instance() or QApplication(sys.argv)
-    qt_app.setApplicationName(title)
-    qt_app.setApplicationDisplayName(title)
+    qt_app.setApplicationName("raggui")
+    qt_app.setApplicationDisplayName("raggui")
     # organizationName completes the QSettings storage path (see raggui.config).
     qt_app.setOrganizationName("PixiPipelineOrchestrator")
     qt_app.setWindowIcon(app_icon())

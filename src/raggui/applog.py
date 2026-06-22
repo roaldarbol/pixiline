@@ -5,7 +5,7 @@ event leaves a durable record even when the live terminal view is gone. This is
 the GUI's *own* log (job/step events, errors); the full tool output of a run is
 written separately per recording (see jobs.termlog).
 
-The file lives in ``<workspace>/logs/raggui-<timestamp>.log``. Import ``log`` and
+The file lives in ``~/.raggui/logs/raggui-<timestamp>.log``. Import ``log`` and
 call ``log.info(...)`` / ``log.error(...)`` / ``log.exception(...)`` (loguru, so
 messages use ``{}`` formatting or f-strings).
 """
@@ -18,8 +18,6 @@ from pathlib import Path
 
 from loguru import logger as log
 
-from raggui.paths import PIPELINE_ROOT
-
 _session_path: Path | None = None
 
 
@@ -29,7 +27,7 @@ def setup() -> Path | None:
     if _session_path is not None:
         return _session_path
     try:
-        log_dir = PIPELINE_ROOT / "logs"
+        log_dir = Path.home() / ".raggui" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         path = log_dir / f"raggui-{stamp}.log"

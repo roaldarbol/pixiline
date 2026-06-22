@@ -47,6 +47,16 @@ class Step:
     outputs: tuple[str, ...]
 
     @property
+    def label(self) -> str:
+        return self.name.replace("-", " ").replace("_", " ").strip().title()
+
+    @property
+    def optional(self) -> bool:
+        """A side-branch step the author marked ``[optional]`` in its description -
+        off by default; toggled on its own (Pixi has no native 'optional' flag)."""
+        return "[optional]" in self.description.lower()
+
+    @property
     def required_args(self) -> tuple[Arg, ...]:
         """Args with no default - the run identity the user supplies (stem/output/input)."""
         return tuple(a for a in self.args if a.required)
@@ -62,9 +72,23 @@ class Pipeline:
     root: Path
     name: str
     steps: tuple[Step, ...]
+    environments: frozenset[str] = frozenset()  # env names defined in the manifest
+
+    @property
+    def title(self) -> str:
+        return self.name.replace("-", " ").replace("_", " ").strip().title()
 
     def step(self, name: str) -> Step | None:
         return next((s for s in self.steps if s.name == name), None)
+
+    def default_settings(self) -> dict[str, str]:
+        """Default value for every tunable (setting) arg across all steps, keyed by
+        arg name. Shared by all of this pipeline's inputs."""
+        values: dict[str, str] = {}
+        for step in self.steps:
+            for a in step.setting_args:
+                values.setdefault(a.name, a.default or "")
+        return values
 
     def edges(self) -> list[tuple[str, str]]:
         """Dependency edges A -> B, derived by matching A's outputs to B's inputs."""
@@ -73,11 +97,7 @@ class Pipeline:
             for consumer in self.steps:
                 if producer.name == consumer.name:
                     continue
-                if any(
-                    _produces(o, i)
-                    for o in producer.outputs
-                    for i in consumer.inputs
-                ):
+                if any(_produces(o, i) for o in producer.outputs for i in consumer.inputs):
                     out.append((producer.name, consumer.name))
         return out
 
@@ -156,6 +176,7 @@ def load_pipeline(root: Path, pixi_exe: str = "pixi") -> Pipeline:
     data = json.loads(proc.stdout)
 
     steps: dict[str, Step] = {}
+    environments = frozenset(environment["environment"] for environment in data)
     for environment in data:
         env_name = environment["environment"]
         for feature in environment["features"]:
@@ -183,14 +204,17 @@ def load_pipeline(root: Path, pixi_exe: str = "pixi") -> Pipeline:
                     inputs=inputs,
                     outputs=outputs,
                 )
-    pipeline = Pipeline(root=root, name=_workspace_name(root), steps=tuple(steps.values()))
+    pipeline = Pipeline(
+        root=root,
+        name=_workspace_name(root),
+        steps=tuple(steps.values()),
+        environments=environments,
+    )
     pipeline.order()  # validate (raises on cycle)
     return pipeline
 
 
-def build_command(
-    step: Step, values: dict[str, str], pixi_exe: str = "pixi"
-) -> list[str]:
+def build_command(step: Step, values: dict[str, str], pixi_exe: str = "pixi") -> list[str]:
     """Build the ``pixi run`` argv for a step.
 
     Pixi task args are positional in declared order, so we pass a value for every

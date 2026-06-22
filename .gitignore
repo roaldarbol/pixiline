@@ -4,6 +4,7 @@
 # Python
 __pycache__/
 *.py[cod]
+.ruff_cache
 
 # Output artefacts (the output dir is chosen by the user, but ignore ./output)
 output/

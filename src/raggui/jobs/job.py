@@ -1,8 +1,9 @@
-"""Job model: one recording run through its selected pipeline steps.
+"""Job model: one input run through a pipeline's selected steps.
 
-A job here is a *chain* of steps — each its own ``pixi run`` process — executed in
-order by the Worker. The job snapshots everything the Worker needs: the input file,
-the ordered step list, the output base, and the overwrite flag.
+A job is a *chain* of steps - each its own ``pixi run`` process, executed in
+dependency order by the Worker. It snapshots everything the Worker needs: the
+pipeline (its steps + how to build commands), the input file, the output base,
+the ordered step list, and the tunable setting values shared across the run.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from raggui.pipeline import ordered
+from raggui.manifest import Pipeline
 
 _LOG_CHAR_CAP = 200_000  # keep the in-memory per-job log bounded
 
@@ -35,12 +36,13 @@ def _next_job_id() -> int:
 
 @dataclass
 class Job:
-    """One recording and the steps to run for it."""
+    """One input and the pipeline steps to run for it."""
 
+    pipeline: Pipeline
     input_path: Path
-    steps: list[str]  # step names, canonical order
     output_base: Path
-    overwrite: bool = False
+    steps: list[str]  # step names
+    settings: dict[str, str] = field(default_factory=dict)  # pipeline-level tunables
     id: int = field(default_factory=_next_job_id)
     state: JobState = JobState.QUEUED
     current_step: int = 0  # index into steps of the step now running / next
@@ -48,8 +50,9 @@ class Job:
     error: str = ""
 
     def __post_init__(self) -> None:
-        # Defensive: always keep steps in canonical order regardless of caller.
-        self.steps = ordered(set(self.steps))
+        # Keep steps in dependency (topological) order regardless of caller.
+        want = set(self.steps)
+        self.steps = [s.name for s in self.pipeline.order() if s.name in want]
 
     @property
     def stem(self) -> str:
@@ -58,6 +61,16 @@ class Job:
     @property
     def label(self) -> str:
         return self.input_path.name
+
+    @property
+    def values(self) -> dict[str, str]:
+        """The full arg values for this run: the run identity plus the tunables."""
+        return {
+            "stem": self.stem,
+            "output": str(self.output_base),
+            "input": str(self.input_path),
+            **self.settings,
+        }
 
     def current_step_name(self) -> str | None:
         if 0 <= self.current_step < len(self.steps):

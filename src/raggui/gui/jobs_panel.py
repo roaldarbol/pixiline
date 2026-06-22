@@ -25,9 +25,13 @@ from PySide6.QtWidgets import (
 from raggui.gui.terminal import TerminalView
 from raggui.jobs.job import Job, JobState
 from raggui.jobs.queue import JobQueue, suggested_worker_count
-from raggui.pipeline import step_by_name
 
 _FINISHED_STATES = frozenset({JobState.DONE, JobState.FAILED, JobState.CANCELED})
+
+
+def _pretty(name: str) -> str:
+    return name.replace("-", " ").replace("_", " ").strip().title()
+
 
 _GROUP_RUNNING = "Running"
 _GROUP_PENDING = "Pending"
@@ -57,7 +61,7 @@ class JobRow(QWidget):
         self.select_check = QCheckBox()
         self.select_check.setToolTip("Select for 'Start selected' / 'Remove selected'")
 
-        self.label = QLabel(job.label)
+        self.label = QLabel(f"{job.pipeline.name} · {job.label}")
         self.label.setMinimumWidth(200)
         self.label.setToolTip(str(job.input_path))
         self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -68,8 +72,7 @@ class JobRow(QWidget):
         self.tag.setStyleSheet(
             "color: white; background: #4a9eff; border-radius: 6px; padding: 1px 6px;"
         )
-        steps = step_by_name()
-        self.tag.setToolTip(" → ".join(steps[s].label if s in steps else s for s in job.steps))
+        self.tag.setToolTip(" → ".join(_pretty(s) for s in job.steps))
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
@@ -111,9 +114,7 @@ class JobRow(QWidget):
         self._set_status("pending", "#d0883a")
 
     def set_running_step(self, step_name: str) -> None:
-        steps = step_by_name()
-        title = steps[step_name].label if step_name in steps else step_name
-        self._set_status(title, "#4a9eff")
+        self._set_status(_pretty(step_name), "#4a9eff")
 
     def set_done(self) -> None:
         self.bar.setValue(1000)
