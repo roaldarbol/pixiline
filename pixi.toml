@@ -140,6 +140,7 @@ python = ">=3.11,<3.13"
 pyside6 = ">=6.7"        # GUI toolkit (mirrors the croppy front-end)
 "ruamel.yaml" = "*"      # comment-preserving round-trip of config.yaml
 pyte = "*"               # terminal emulator for the live log (in-place progress + ANSI colour)
+loguru = "*"             # GUI/orchestrator session logging
 
 [feature.gui.tasks]
 gui = "python src/raggui/__main__.py"

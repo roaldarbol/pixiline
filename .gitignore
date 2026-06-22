@@ -8,6 +8,9 @@ __pycache__/
 # Output artefacts (the output dir is chosen by the user, but ignore ./output)
 output/
 
+# GUI session logs
+logs/
+
 # OS cruft
 Thumbs.db
 .DS_Store

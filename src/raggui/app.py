@@ -8,6 +8,7 @@ import sys
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
+from raggui import applog
 from raggui.gui.main_window import MainWindow
 from raggui.paths import workspace_title
 from raggui.resources import app_icon
@@ -15,6 +16,8 @@ from raggui.resources import app_icon
 
 def main() -> int:
     """Start the Qt event loop and return its exit code."""
+    applog.setup()
+    applog.install_excepthook()  # a crash leaves a traceback in the GUI log
     title = workspace_title()
     qt_app = QApplication.instance() or QApplication(sys.argv)
     qt_app.setApplicationName(title)

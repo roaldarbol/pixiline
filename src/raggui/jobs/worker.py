@@ -11,11 +11,13 @@ fires.
 from __future__ import annotations
 
 import codecs
+import datetime
 import subprocess
 import sys
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 
+from raggui import applog
 from raggui.jobs.job import Job, JobState
 from raggui.jobs.termlog import SettledLog
 from raggui.paths import pixi_executable
@@ -73,8 +75,12 @@ class Worker(QObject):
         env = QProcessEnvironment.systemEnvironment()
         env.insert("PYTHONUNBUFFERED", "1")
         env.insert("PYTHONIOENCODING", "utf-8")
-        env.insert("FORCE_COLOR", "1")
+        env.insert("FORCE_COLOR", "1")      # honoured by rich/click/etc.
         env.insert("CLICOLOR_FORCE", "1")
+        # loguru (octron/behaveai) ignores FORCE_COLOR; on Windows it only colours
+        # when stdout is a TTY *or* TERM is set (loguru._colorama.should_colorize).
+        # We pipe stdout, so without this its output comes through plain.
+        env.insert("TERM", "xterm-256color")
         env.insert("COLUMNS", "120")
         env.insert("LINES", "300")
         self._proc.setProcessEnvironment(env)
@@ -97,14 +103,26 @@ class Worker(QObject):
         if not self._job.steps:
             self.finished.emit(self._job.id)  # nothing selected — no-op
             return
-        # A settled plain-text log of this run, in the recording's output folder.
-        self._logfile = SettledLog(self._job.output_base / self._job.stem / "pipeline.log")
+        # A settled plain-text log of this run, timestamped so a later separate run
+        # doesn't overwrite an earlier one, under the recording's logs/ folder.
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        self._logfile = SettledLog(self._job.output_base / self._job.stem / "logs" / f"{stamp}.log")
+        applog.log.info(
+            f"Job {self._job.id} started: {self._job.stem} | "
+            f"steps: {', '.join(self._job.steps)} | output: {self._job.output_base}"
+        )
+        # A bold, coloured run header with a divider rule, to set this run apart
+        # from the tool output below. (Our own text, so colouring it is fair game.)
+        title = f"{self._job.stem}  —  {' → '.join(self._job.steps)}"
+        rule = "─" * len(title)
+        self._emit_log(f"\x1b[1;36m{title}\x1b[0m\n\x1b[36m{rule}\x1b[0m\n")
         self._start_install()
 
     def cancel(self) -> None:
         self._canceled = True
         if self._proc.state() == QProcess.ProcessState.NotRunning:
             self._job.state = JobState.CANCELED
+            applog.log.info(f"Job {self._job.id} canceled")
             self._close_log()
             self.canceled.emit(self._job.id)
             return
@@ -155,6 +173,7 @@ class Worker(QObject):
             if missing:
                 self._fail(f"Step '{name}' is missing required input(s): {', '.join(missing)}")
                 return
+        applog.log.info(f"Job {self._job.id}: step '{name}' running")
         self.step_changed.emit(self._job.id, self._job.current_step, name)
         self.progress.emit(self._job.id, self._job.fraction())
         cmd = build_command(
@@ -175,6 +194,7 @@ class Worker(QObject):
     def _on_step_finished(self, code: int, status: QProcess.ExitStatus) -> None:
         if self._canceled:
             self._job.state = JobState.CANCELED
+            applog.log.info(f"Job {self._job.id} canceled")
             self._close_log()
             self.canceled.emit(self._job.id)
             return
@@ -200,10 +220,12 @@ class Worker(QObject):
         if step and step.makes and not artifact_present(step.makes, self._job.output_base, self._job.stem):
             self._fail(f"Step '{name}' finished but did not produce its output: {step.makes}")
             return
+        applog.log.info(f"Job {self._job.id}: step '{name}' done")
         self._job.current_step += 1
         self.progress.emit(self._job.id, self._job.fraction())
         if self._job.current_step >= len(self._job.steps):
             self._job.state = JobState.DONE
+            applog.log.info(f"Job {self._job.id} done")
             self._close_log()
             self.finished.emit(self._job.id)
             return
@@ -222,6 +244,7 @@ class Worker(QObject):
         """Mark the job failed, stop the chain, and report (log + signal)."""
         self._job.state = JobState.FAILED
         self._job.error = message
+        applog.log.error(f"Job {self._job.id} failed: {message}")
         self._emit_log(f"\n[{message}]\n")
         self._close_log()
         self.failed.emit(self._job.id, message)
