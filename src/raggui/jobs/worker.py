@@ -3,18 +3,19 @@
 A job first installs the pixi environments its steps need ("Installing
 environments"), then runs each step as one ``pixi run`` process, advancing only
 when the current one exits 0 *and* produced its declared output. Stdout+stderr are
-merged and streamed live (carriage returns normalized) so the Jobs tab shows
-progress; a heartbeat marks long, quiet phases so they don't look hung. Exactly
-one of ``finished`` / ``failed`` / ``canceled`` fires.
+merged and streamed live (control sequences intact) so the Jobs tab's terminal log
+shows in-place progress. Exactly one of ``finished`` / ``failed`` / ``canceled``
+fires.
 """
 
 from __future__ import annotations
 
-import time
+import codecs
 
-from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 
 from raggui.jobs.job import Job, JobState
+from raggui.jobs.termlog import SettledLog
 from raggui.paths import pixi_executable
 from raggui.pipeline import (
     artifact_present,
@@ -26,7 +27,6 @@ from raggui.pipeline import (
 )
 
 _KILL_GRACE_MS = 3000
-_HEARTBEAT_MS = 15000
 _INSTALL_LABEL = "Installing environments"
 
 _PHASE_INSTALL = "install"
@@ -47,23 +47,24 @@ class Worker(QObject):
         self._proc = QProcess(self)
         self._proc.setWorkingDirectory(working_directory())
         self._proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
-        # Force child Python tools (behaveai / octron) to stream their progress
-        # instead of block-buffering when stdout isn't a TTY, so the log is live.
+        # Stream live (no block-buffering when stdout isn't a TTY), force colour
+        # on, and pin a width so progress bars size to the log terminal's screen.
         env = QProcessEnvironment.systemEnvironment()
         env.insert("PYTHONUNBUFFERED", "1")
         env.insert("PYTHONIOENCODING", "utf-8")
+        env.insert("FORCE_COLOR", "1")
+        env.insert("CLICOLOR_FORCE", "1")
+        env.insert("COLUMNS", "120")
+        env.insert("LINES", "300")
         self._proc.setProcessEnvironment(env)
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         self._proc.readyReadStandardOutput.connect(self._on_output)
         self._proc.finished.connect(self._on_step_finished)
         self._proc.errorOccurred.connect(self._on_error)
         self._canceled = False
         self._launch_failed = False
         self._phase = _PHASE_INSTALL
-        self._phase_label = ""
-        self._phase_started = 0.0
-        self._heartbeat = QTimer(self)
-        self._heartbeat.setInterval(_HEARTBEAT_MS)
-        self._heartbeat.timeout.connect(self._on_heartbeat)
+        self._logfile: SettledLog | None = None
 
     @property
     def job(self) -> Job:
@@ -75,13 +76,15 @@ class Worker(QObject):
         if not self._job.steps:
             self.finished.emit(self._job.id)  # nothing selected — no-op
             return
+        # A settled plain-text log of this run, in the recording's output folder.
+        self._logfile = SettledLog(self._job.output_base / self._job.stem / "pipeline.log")
         self._start_install()
 
     def cancel(self) -> None:
         self._canceled = True
-        self._heartbeat.stop()
         if self._proc.state() == QProcess.ProcessState.NotRunning:
             self._job.state = JobState.CANCELED
+            self._close_log()
             self.canceled.emit(self._job.id)
             return
         self._proc.terminate()
@@ -114,7 +117,7 @@ class Worker(QObject):
         cmd = [pixi_executable(), "install"]
         for env in envs:
             cmd += ["-e", env]
-        self._launch(cmd, _INSTALL_LABEL)
+        self._launch(cmd)
 
     def _start_current_step(self) -> None:
         self._phase = _PHASE_RUN
@@ -138,21 +141,18 @@ class Worker(QObject):
             self._job.stem,
             overwrite=self._job.overwrite,
         )
-        self._launch(cmd, name)
+        self._launch(cmd)
 
-    def _launch(self, cmd: list[str], label: str) -> None:
-        self._phase_label = label
-        self._phase_started = time.monotonic()
+    def _launch(self, cmd: list[str]) -> None:
         self._emit_log(f"\n$ {self._fmt(cmd)}\n")
-        self._heartbeat.start()
         self._proc.start(cmd[0], cmd[1:])
 
     # --- process completion --------------------------------------------------
 
     def _on_step_finished(self, code: int, status: QProcess.ExitStatus) -> None:
-        self._heartbeat.stop()
         if self._canceled:
             self._job.state = JobState.CANCELED
+            self._close_log()
             self.canceled.emit(self._job.id)
             return
         if self._launch_failed:
@@ -181,6 +181,7 @@ class Worker(QObject):
         self.progress.emit(self._job.id, self._job.fraction())
         if self._job.current_step >= len(self._job.steps):
             self._job.state = JobState.DONE
+            self._close_log()
             self.finished.emit(self._job.id)
             return
         self._start_current_step()
@@ -196,10 +197,10 @@ class Worker(QObject):
 
     def _fail(self, message: str) -> None:
         """Mark the job failed, stop the chain, and report (log + signal)."""
-        self._heartbeat.stop()
         self._job.state = JobState.FAILED
         self._job.error = message
         self._emit_log(f"\n[{message}]\n")
+        self._close_log()
         self.failed.emit(self._job.id, message)
 
     # --- output --------------------------------------------------------------
@@ -207,18 +208,23 @@ class Worker(QObject):
     def _on_output(self) -> None:
         data = bytes(self._proc.readAllStandardOutput())
         if data:
-            # Tools redraw progress with carriage returns; turn them into newlines
-            # so each update is visible in the (non-terminal) log pane.
-            text = data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
-            self._emit_log(text)
-
-    def _on_heartbeat(self) -> None:
-        elapsed = int(time.monotonic() - self._phase_started)
-        self._emit_log(f"… {self._phase_label} — still working ({elapsed}s elapsed)…\n")
+            # Emit raw (control sequences intact) so the terminal log view can
+            # render in-place progress + colour. Incremental decode handles
+            # multi-byte chars split across reads.
+            text = self._decoder.decode(data)
+            if text:
+                self._emit_log(text)
 
     def _emit_log(self, text: str) -> None:
         self._job.append_log(text)
+        if self._logfile is not None:
+            self._logfile.feed(text)
         self.log.emit(self._job.id, text)
+
+    def _close_log(self) -> None:
+        if self._logfile is not None:
+            self._logfile.close()
+            self._logfile = None
 
     @staticmethod
     def _fmt(cmd: list[str]) -> str:

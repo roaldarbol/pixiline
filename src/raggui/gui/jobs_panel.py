@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -23,9 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from raggui.gui.terminal import TerminalView
 from raggui.jobs.job import Job, JobState
-from raggui.pipeline import step_by_name
 from raggui.jobs.queue import JobQueue, suggested_worker_count
+from raggui.pipeline import step_by_name
 
 _FINISHED_STATES = frozenset({JobState.DONE, JobState.FAILED, JobState.CANCELED})
 
@@ -252,10 +252,7 @@ class JobsPanel(QWidget):
         self._log_header = QLabel("Log")
         self._log_header.setStyleSheet("color: #aaa; font-weight: bold;")
         log_layout.addWidget(self._log_header)
-        self._log_view = QPlainTextEdit()
-        self._log_view.setReadOnly(True)
-        self._log_view.setMaximumBlockCount(5000)
-        self._log_view.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
+        self._log_view = TerminalView()
         log_layout.addWidget(self._log_view, 1)
         split.addWidget(log_container)
         split.setStretchFactor(0, 3)
@@ -329,7 +326,7 @@ class JobsPanel(QWidget):
         if job_id != self._log_job_id:
             self._show_log_for(job_id)
             return
-        self._log_view.appendPlainText(text.rstrip("\n"))
+        self._log_view.feed(text)
 
     def _on_finished(self, job_id: int) -> None:
         row = self._rows.get(job_id)
@@ -362,7 +359,7 @@ class JobsPanel(QWidget):
             row.deleteLater()
         if job_id == self._log_job_id:
             self._log_job_id = None
-            self._log_view.clear()
+            self._log_view.clear_screen()
             self._log_header.setText("Log")
         self._refresh_groups()
         self._update_buttons()
@@ -375,8 +372,9 @@ class JobsPanel(QWidget):
             return
         self._log_job_id = job_id
         self._log_header.setText(f"Log — {job.label}")
-        self._log_view.setPlainText(job.log)
-        self._log_view.moveCursor(self._log_view.textCursor().MoveOperation.End)
+        # Re-feed the job's accumulated raw output to rebuild the terminal screen.
+        self._log_view.clear_screen()
+        self._log_view.feed(job.log)
 
     def _place_row(self, job_id: int, target: str) -> None:
         row = self._rows.get(job_id)
