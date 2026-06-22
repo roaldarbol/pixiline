@@ -6,12 +6,13 @@ from __future__ import annotations
 from PySide6.QtWidgets import QMainWindow, QTabWidget
 
 from raggui.config import load_parallel_enabled, save_parallel_enabled
-from raggui.gui.jobs_panel import JobsPanel
-from raggui.paths import workspace_title
-from raggui.jobs.queue import JobQueue, suggested_worker_count
 from raggui.gui.inputs_tab import InputsTab
+from raggui.gui.jobs_panel import JobsPanel
 from raggui.gui.settings_tab import SettingsTab
 from raggui.gui.status_strip import StatusStrip
+from raggui.gui.theme import apply_app_theme, watch_app_palette
+from raggui.jobs.queue import JobQueue, suggested_worker_count
+from raggui.paths import workspace_title
 
 
 class MainWindow(QMainWindow):
@@ -19,6 +20,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(workspace_title())
         self.resize(1200, 800)
+
+        # App-wide border/control styling (GitHub-like), refreshed on a live
+        # light/dark theme switch.
+        apply_app_theme()
+        watch_app_palette(self, apply_app_theme)
 
         self._queue = JobQueue(parent=self)
         parallel = load_parallel_enabled()

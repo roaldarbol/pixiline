@@ -29,6 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from raggui.config import load_output_base, save_output_base
+from raggui.gui.constants import PANEL_MARGIN, panel_header
+from raggui.gui.status_flash import StatusFlash
+from raggui.gui.theme import border_color, primary_surface, watch_app_palette
 from raggui.jobs.job import Job
 from raggui.paths import FALLBACK_INPUT_GLOBS, workspace_title
 from raggui.pipeline import (
@@ -225,14 +228,13 @@ class InputStepPanel(QWidget):
 
         root.addStretch(1)
 
-        # Queue button + transient confirmation.
+        # Queue button + transient confirmation (auto-clears).
         queue_row = QHBoxLayout()
         self._queue_btn = QPushButton("Add to Queue")
         self._queue_btn.clicked.connect(lambda: self.add_to_queue_requested.emit(self))
-        self._added_lbl = QLabel("")
-        self._added_lbl.setStyleSheet("color: #4caf50;")
+        self._flash = StatusFlash()
         queue_row.addStretch(1)
-        queue_row.addWidget(self._added_lbl)
+        queue_row.addWidget(self._flash)
         queue_row.addWidget(self._queue_btn)
         root.addLayout(queue_row)
 
@@ -287,7 +289,7 @@ class InputStepPanel(QWidget):
         self._sync()
 
     def confirm_added(self) -> None:
-        self._added_lbl.setText("Added to queue ✓")
+        self._flash.flash("Added to queue ✓")
 
     # --- step gating --------------------------------------------------------
     #
@@ -457,11 +459,14 @@ class InputsTab(QWidget):
         # --- left: input list + actions ---
         left = QWidget(splitter)
         lv = QVBoxLayout(left)
-        lv.setContentsMargins(8, 8, 8, 8)
-        lv.addWidget(QLabel("<b>Inputs</b>"))
+        lv.setContentsMargins(PANEL_MARGIN, 0, PANEL_MARGIN, PANEL_MARGIN)
+        lv.addWidget(panel_header("<b>Inputs</b>"))
         self.inputs_list = QListWidget()
         self.inputs_list.currentRowChanged.connect(self._on_selected)
         lv.addWidget(self.inputs_list, 1)
+        # Theme the list as the primary "field" surface; re-apply on a theme switch.
+        self._apply_list_theme()
+        watch_app_palette(self.inputs_list, self._apply_list_theme)
 
         self.add_btn = QPushButton("Add files…")
         self.add_btn.clicked.connect(self._browse_inputs)
@@ -482,16 +487,27 @@ class InputsTab(QWidget):
         lv.addWidget(self.queue_all_btn)
 
         # --- right: per-input panels + placeholder ---
-        self.stack = QStackedWidget(splitter)
+        right = QWidget(splitter)
+        rv = QVBoxLayout(right)
+        rv.setContentsMargins(0, 0, 0, 0)
+        rv.addWidget(panel_header())  # reserve the same top inset so columns align
+        self.stack = QStackedWidget()
         self._placeholder = self._build_placeholder()
         self.stack.addWidget(self._placeholder)
+        rv.addWidget(self.stack, 1)
 
         splitter.addWidget(left)
-        splitter.addWidget(self.stack)
+        splitter.addWidget(right)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([240, 860])
         layout.addWidget(splitter)
+
+    def _apply_list_theme(self) -> None:
+        self.inputs_list.setStyleSheet(
+            f"QListWidget {{ background-color: {primary_surface().name()}; "
+            f"border: 1px solid {border_color().name()}; border-radius: 6px; }}"
+        )
 
     # --- public API ---------------------------------------------------------
 
