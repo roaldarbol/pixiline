@@ -1,159 +1,24 @@
 [workspace]
 authors = ["Mikkel Roald-Arboel <25629697+roaldarbol@users.noreply.github.com>"]
-name = "portia-sleep-pipeline"
+name = "raggui"
 version = "0.1.0"
-# isolated-r ships an r-base that installs into a fully self-contained prefix
-# (no user/site library leakage); animovement hosts the r-animovement stack.
-channels = [
-  "conda-forge",
-  "https://prefix.dev/animovement",
-  "https://prefix.dev/isolated-r",
-]
+channels = ["conda-forge"]
 platforms = ["win-64"]
 
-# ---------------------------------------------------------------------------
-# Environments are named for the pipeline STAGE they serve, not the tools in
-# them. Each stage needs its own dependency set (the video stages have
-# conflicting Python stacks), so they are separate environments:
-#   motion        - motion-colour video           (BehaveAI / PyTorch)
-#   tracking       - prediction + overlay render   (Octron)
-#   export         - region-property export        (Octron, export branch)
-#   segmentation   - the R analysis: preprocess + segment
-#   gui            - thin PySide6 front-end (orchestrates the others)
-#   default        - orchestration only (runs the whole chain, FPS probe)
-# ---------------------------------------------------------------------------
-
-# Tasks. The PIPELINE (its ordered steps) is defined in config.yaml under `steps:`,
-# not here - each step there names the task to run, its env, and what it needs/makes.
-# The GUI and `process` (the orchestrator) read that list; every step runs with the
-# same contract:
+# raggui - a generic Pixi-pipeline manager GUI.
 #
-#     <step>  --stem <stem>  --output <base>  [--input <path>]  [--overwrite]
+# It loads a pipeline's `pixi.toml` (whose `[tasks]` ARE the pipeline steps),
+# lets you pick steps + inputs, queues them, and runs/monitors the jobs. It must
+# NOT depend on any pipeline's stack (torch, octron, R, ...) - those live in their
+# own Pixi workspaces. An example pipeline ships alongside, in ./sleep-staging.
 #
-# The tasks below are just the runnable units the steps point at (plus `process`,
-# `probe-fps`, `gui`). Run the whole chain, or one step directly:
-#
-#   pixi run process video.mp4 --output out                                # whole chain
-#   pixi run -e motion motion --stem clip --output out --input video.mp4   # one step
-#   pixi run -e tracking render --stem clip --output out                   # QC overlay
-#   pixi run probe-fps video.mp4                                           # FPS probe
-[tasks]
-process   = "nu src/orchestrator.nu"
-probe-fps = "nu resources/scripts/probe_fps.nu"
-
-# Default environment: orchestration only - nushell to drive the chain, ffmpeg
-# for the FPS probe. No heavy stacks here.
+# Kept deliberately minimal.
 [dependencies]
-nushell = ">=0.111.0,<0.112"
-ffmpeg = ">=8.0.1,<9"
-
-# --- Stage: motion-colour video (BehaveAI) ---------------------------------
-[feature.motion]
-channels = ["conda-forge"]
-
-[feature.motion.system-requirements]
-cuda = "12"
-
-[feature.motion.dependencies]
-python = ">=3.9,<3.13"
-pytorch = "*"
-torchvision = "*"
-torchcodec = { version = "*", build = "*cuda*" }
-py-opencv = "*"
-numpy = "*"
-pillow = "*"
-scipy = "*"
-tqdm = "*"
-pyyaml = "*"
-loguru = "*"
-typer = "*"
-nushell = ">=0.111.0,<0.112"
-ffmpeg = "*"
-
-[feature.motion.pypi-dependencies]
-ultralytics = "*"
-pybehaveai = { git = "https://github.com/roaldarbol/BehaveAI", branch = "optimise-gpu-pipeline" }
-
-[feature.motion.tasks]
-motion = "nu steps/motion.nu"
-
-# --- Stage: prediction / tracking + overlay render (Octron) ----------------
-[feature.tracking.dependencies]
-python = ">=3.11,<3.12"
-pyqt6 = ">=6.0"
-nushell = ">=0.111.0,<0.112"
-
-[feature.tracking.pypi-dependencies]
-octron = { git = "https://github.com/roaldarbol/OCTRON-GUI", branch = "prediction-speedup" }
-
-[feature.tracking.tasks]
-predict = "nu steps/predict.nu"
-# render is not listed in config.yaml `steps:`, so it isn't part of the chain or
-# shown in the GUI. Add it to `steps:` to include it; still runnable directly.
-render = "nu steps/render.nu"
-
-# --- Stage: region-property export (Octron, export branch) -----------------
-[feature.export.dependencies]
-python = ">=3.11,<3.12"
-pyqt6 = ">=6.0"
-nushell = ">=0.111.0,<0.112"
-
-[feature.export.pypi-dependencies]
-octron = { git = "https://github.com/roaldarbol/OCTRON-GUI", branch = "feat/export-tracking" }
-
-[feature.export.tasks]
-export = "nu steps/export.nu"
-
-# --- Stage: the R analysis (preprocess -> segment -> final CSV) ------------
-# Isolated R toolchain + the animovement stack. ffmpeg is here too because
-# preprocess.R shells out to ffprobe for the frame rate. nushell runs the thin
-# step wrappers (preprocess.nu / segment.nu). CRAN packages declared as r-* - see
-# README "R dependencies".
-# [feature.segmentation.dependencies]
-# r-base = ">=4.5.3,<4.6"
-# r-animovement = ">=0.7.3,<0.8"
-# ffmpeg = ">=8.0.1,<9"
-# nushell = ">=0.111.0,<0.112"
-# r-here = "*"
-# r-yaml = "*"
-# r-tidyverse = "*"
-# r-vroom = "*"
-# r-arrow = "*"
-# r-cli = "*"
-# r-tidychangepoint = "*"
-# r-fastcpd = "*"
-# r-tidyclust = "*"
-# r-tidymodels = "*"
-# r-ranger = "*"
-
-# [feature.segmentation.tasks]
-# preprocess = "nu steps/preprocess.nu"
-# segment = "nu steps/segment.nu"
-
-# --- GUI (front-end only) --------------------------------------------------
-# Thin PySide6 front-end that ORCHESTRATES the pipeline by shelling out to
-# `pixi run ...` (see README "Notes for building the GUI"). It must not import
-# torch / octron / R - those stay in their own environments. Kept minimal on
-# purpose. The `gui` task points at src/raggui/__main__.py.
-[feature.gui.dependencies]
 python = ">=3.11,<3.13"
-pyside6 = ">=6.7"        # GUI toolkit (mirrors the croppy front-end)
-"ruamel.yaml" = "*"      # comment-preserving round-trip of config.yaml
-pyte = "*"               # terminal emulator for the live log (in-place progress + ANSI colour)
+pyside6 = ">=6.7"        # GUI toolkit
+"ruamel.yaml" = "*"      # YAML round-trip (transitional)
+pyte = "*"               # terminal emulator for the live log (ANSI colour + in-place progress)
 loguru = "*"             # GUI/orchestrator session logging
 
-[feature.gui.tasks]
+[tasks]
 gui = "python src/raggui/__main__.py"
-
-[environments]
-motion       = { features = ["motion"], no-default-feature = true }
-tracking     = { features = ["tracking"], no-default-feature = true }
-export       = { features = ["export"], no-default-feature = true }
-# TEMP: several of the segmentation env's CRAN packages (r-tidychangepoint,
-# r-fastcpd, ...) have no candidates on the configured channels yet, which blocks
-# locking the whole workspace - and thus installing any other env, including gui.
-# The segmentation environment is excluded here only so the GUI can be built and
-# installed; RESTORE this line and resolve those deps (via the animovement channel
-# or renv - see README "R dependencies") before running preprocess/segment.
-# segmentation = { features = ["segmentation"], no-default-feature = true }
-gui          = { features = ["gui"], no-default-feature = true }
