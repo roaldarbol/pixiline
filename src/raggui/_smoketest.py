@@ -31,7 +31,7 @@ def main() -> int:
     win = MainWindow()
     win.show()
     app.processEvents()
-    print("OK: window built (empty state =", win._main.currentIndex() == 0, ")")
+    print("OK: window built (empty state =", win._workbench.currentWidget() is win._drop, ")")
 
     if (_PIPELINE / "pixi.toml").is_file():
         pipeline = load_pipeline(_PIPELINE)
@@ -45,13 +45,12 @@ def main() -> int:
         # Load it into the window and add an input.
         win._add_pipeline(_PIPELINE)
         app.processEvents()
-        view = win._pipe_stack.currentWidget()
+        view = win._pipeline_views[-1]
         view.add_inputs([Path("clip.mp4")])
         app.processEvents()
-        print(
-            "OK: pipeline view built; tabs:",
-            [win._tabs.tabText(i) for i in range(win._tabs.count())],
-        )
+        win._activity.select("jobs")  # switch to the global Jobs view
+        app.processEvents()
+        print("OK: pipeline view + activity views built (count =", win._views.count(), ")")
     else:
         print("(no sleep-staging pipeline next to repo; skipped manifest load)")
 
