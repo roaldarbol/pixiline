@@ -7,8 +7,14 @@ be loaded at once and jobs queued from each.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from raggui.gui.constants import PANEL_MARGIN
 from raggui.gui.drop_screen import _roots_from_urls
@@ -16,11 +22,12 @@ from raggui.gui.list_card import ListCard
 
 
 class PipelinesSidebar(QWidget):
-    """A list of loaded pipelines with add/remove, and pixi.toml drop support."""
+    """A list of loaded pipelines with add/remove/rename, and pixi.toml drop support."""
 
     pipeline_chosen = Signal(object)  # Path (pipeline root) to add
     selected = Signal(int)  # row, or -1
     remove_requested = Signal(int)  # row
+    renamed = Signal(int, str)  # row, new display name
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -32,6 +39,11 @@ class PipelinesSidebar(QWidget):
         card = ListCard("Pipelines")
         self.list = card.list
         self.list.currentRowChanged.connect(self.selected)
+        self.list.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+        )
+        self.list.itemChanged.connect(self._on_item_changed)
         v.addWidget(card, 1)
 
         self.add_btn = QPushButton("Add pipeline…")
@@ -48,8 +60,22 @@ class PipelinesSidebar(QWidget):
     # --- public API ----------------------------------------------------------
 
     def add_pipeline(self, name: str) -> None:
-        self.list.addItem(name)
+        item = QListWidgetItem(name)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)  # double-click to rename
+        self.list.addItem(item)
         self.list.setCurrentRow(self.list.count() - 1)
+
+    def set_name(self, row: int, name: str) -> None:
+        item = self.list.item(row)
+        if item is not None:
+            self.list.blockSignals(True)
+            item.setText(name)
+            self.list.blockSignals(False)
+
+    def _on_item_changed(self, item: QListWidgetItem) -> None:
+        row = self.list.row(item)
+        if row >= 0:
+            self.renamed.emit(row, item.text())
 
     def remove_pipeline(self, row: int) -> None:
         item = self.list.takeItem(row)

@@ -40,11 +40,12 @@ from raggui.gui.status_flash import StatusFlash
 from raggui.jobs.job import Job
 from raggui.manifest import Pipeline
 
+# Applied only when the button is enabled; cleared (back to the normal button) when
+# disabled, so it doesn't shout while it can't be clicked.
 _QUEUE_BTN_QSS = (
     "QPushButton { background: #3b82f6; color: white; border: none; border-radius: 6px;"
     " padding: 9px 12px; font-weight: 600; }"
     "QPushButton:hover { background: #2f74e0; }"
-    "QPushButton:disabled { background: #9bb4dd; color: #eef2fb; }"
 )
 
 
@@ -65,6 +66,7 @@ class PipelineView(QWidget):
         super().__init__(parent)
         self._pipeline = pipeline
         self._queue = queue
+        self.display_name = pipeline.name  # editable alias shown in the sidebar / jobs
         self._order = pipeline.order()
         self._settings = pipeline.default_settings()
         self._selected: set[str] = {s.name for s in self._order if not s.optional}
@@ -119,10 +121,12 @@ class PipelineView(QWidget):
 
     def _build_steps(self) -> QWidget:
         body = QWidget()
-        h = QHBoxLayout(body)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(18)
+        outer = QVBoxLayout(body)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
 
+        top = QHBoxLayout()
+        top.setSpacing(18)
         left = QWidget()
         lv = QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0)
@@ -145,22 +149,27 @@ class PipelineView(QWidget):
             warn = QLabel("This pipeline declares no steps (tasks with inputs/outputs).")
             warn.setStyleSheet("color: #d0883a;")
             lv.addWidget(warn)
-        self._status = QLabel()
-        self._status.setWordWrap(True)
-        lv.addWidget(self._status)
         lv.addStretch(1)
-        h.addWidget(left, 1)
+        top.addWidget(left, 1)
 
         self._dag = DagView(self._pipeline)
         self._dag.step_clicked.connect(self._on_dag_click)
-        h.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignTop)
+        top.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignVCenter)
+        outer.addLayout(top, 1)
+
+        # "Will run: …" spans the full width, below both columns.
+        self._status = QLabel()
+        self._status.setWordWrap(True)
+        outer.addWidget(self._status)
         return body
 
     def _build_settings(self) -> QWidget:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.viewport().setStyleSheet("background: transparent;")  # show the card surface
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
         outer = QVBoxLayout(container)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(10)
@@ -218,11 +227,13 @@ class PipelineView(QWidget):
         self._remove_btn.clicked.connect(self._remove_current)
         v.addWidget(self._remove_btn)
 
-        v.addStretch(1)  # pin the queue button to the bottom
+        # The list (stretch=1) keeps most of the height; a small fixed gap separates
+        # the queue button, which sits at the bottom. Its colour is applied only when
+        # it's enabled (see _update_queue_enabled).
+        v.addSpacing(16)
         self._flash = StatusFlash()
         v.addWidget(self._flash)
         self._queue_btn = QPushButton("Add to Queue")
-        self._queue_btn.setStyleSheet(_QUEUE_BTN_QSS)
         self._queue_btn.clicked.connect(self._queue_all)
         v.addWidget(self._queue_btn)
         return w
@@ -261,6 +272,7 @@ class PipelineView(QWidget):
                     output_base=output_base,
                     steps=steps,
                     settings=dict(self._settings),
+                    pipeline_label=self.display_name,
                 )
             )
         n = len(self._files)
@@ -333,10 +345,10 @@ class PipelineView(QWidget):
             missing.append("a step")
         if not self._files:
             missing.append("input files")
-        self._queue_btn.setEnabled(not missing)
-        self._queue_btn.setToolTip(
-            "" if not missing else "Choose " + ", ".join(missing) + " first."
-        )
+        ready = not missing
+        self._queue_btn.setEnabled(ready)
+        self._queue_btn.setStyleSheet(_QUEUE_BTN_QSS if ready else "")
+        self._queue_btn.setToolTip("" if ready else "Choose " + ", ".join(missing) + " first.")
 
     # --- drag & drop ---------------------------------------------------------
 

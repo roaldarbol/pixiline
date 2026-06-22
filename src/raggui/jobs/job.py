@@ -43,6 +43,7 @@ class Job:
     output_base: Path
     steps: list[str]  # step names
     settings: dict[str, str] = field(default_factory=dict)  # pipeline-level tunables
+    pipeline_label: str = ""  # display alias of the pipeline (sidebar/jobs); name if empty
     id: int = field(default_factory=_next_job_id)
     state: JobState = JobState.QUEUED
     current_step: int = 0  # index into steps of the step now running / next

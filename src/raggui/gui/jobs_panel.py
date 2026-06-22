@@ -61,7 +61,7 @@ class JobRow(QWidget):
         self.select_check = QCheckBox()
         self.select_check.setToolTip("Select for 'Start selected' / 'Remove selected'")
 
-        self.label = QLabel(f"{job.pipeline.name} · {job.label}")
+        self.label = QLabel(f"{job.pipeline_label or job.pipeline.name} · {job.label}")
         self.label.setMinimumWidth(200)
         self.label.setToolTip(str(job.input_path))
         self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)

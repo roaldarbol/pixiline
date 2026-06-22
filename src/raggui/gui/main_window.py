@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         self._sidebar.pipeline_chosen.connect(self._add_pipeline)
         self._sidebar.selected.connect(self._on_pipeline_selected)
         self._sidebar.remove_requested.connect(self._remove_pipeline)
+        self._sidebar.renamed.connect(self._rename_pipeline)
 
         self._drop = DropScreen()
         self._drop.pipeline_chosen.connect(self._add_pipeline)
@@ -119,10 +120,6 @@ class MainWindow(QMainWindow):
 
     def _add_pipeline(self, root: Path) -> None:
         self._activity.select("pipelines")
-        for i, p in enumerate(self._pipelines):
-            if p.root == root:  # already loaded — just focus it
-                self._sidebar.list.setCurrentRow(i)
-                return
         try:
             pipeline = load_pipeline(root, pixi_executable())
         except Exception as exc:  # noqa: BLE001 — surface any load failure to the user
@@ -130,11 +127,33 @@ class MainWindow(QMainWindow):
                 self, "Add pipeline", f"Could not read a pipeline from:\n{root}\n\n{exc}"
             )
             return
+        # The same pixi.toml can be loaded several times (different settings); give
+        # duplicates a numbered name. Rename via double-click in the sidebar.
+        name = self._unique_name(pipeline.name)
         view = PipelineView(pipeline, self._queue)
+        view.display_name = name
         self._pipelines.append(pipeline)
         self._pipeline_views.append(view)
         self._workbench.addWidget(view)
-        self._sidebar.add_pipeline(pipeline.name)  # selects it → _on_pipeline_selected
+        self._sidebar.add_pipeline(name)  # selects it → _on_pipeline_selected
+
+    def _unique_name(self, base: str) -> str:
+        existing = {v.display_name for v in self._pipeline_views}
+        if base not in existing:
+            return base
+        n = 2
+        while f"{base} ({n})" in existing:
+            n += 1
+        return f"{base} ({n})"
+
+    def _rename_pipeline(self, row: int, name: str) -> None:
+        if not (0 <= row < len(self._pipeline_views)):
+            return
+        view = self._pipeline_views[row]
+        if name.strip():
+            view.display_name = name.strip()
+        else:
+            self._sidebar.set_name(row, view.display_name)  # revert empty rename
 
     def _on_pipeline_selected(self, row: int) -> None:
         if 0 <= row < len(self._pipeline_views):
