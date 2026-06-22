@@ -11,6 +11,8 @@ fires.
 from __future__ import annotations
 
 import codecs
+import subprocess
+import sys
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 
@@ -28,6 +30,25 @@ from raggui.pipeline import (
 
 _KILL_GRACE_MS = 3000
 _INSTALL_LABEL = "Installing environments"
+
+
+def _kill_process_tree(pid: int) -> None:
+    """Forcefully terminate a process *and all its descendants*.
+
+    QProcess.terminate()/kill() only signals the direct child (here ``pixi``), so
+    the heavy grandchildren (``nu`` → behaveai/octron → Python/torch) would keep
+    running after a cancel. On Windows ``taskkill /T`` kills the whole tree.
+    """
+    if pid <= 0 or sys.platform != "win32":
+        return  # POSIX falls back to QProcess.kill() in the caller
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError:
+        pass
 
 _PHASE_INSTALL = "install"
 _PHASE_RUN = "run"
@@ -87,9 +108,11 @@ class Worker(QObject):
             self._close_log()
             self.canceled.emit(self._job.id)
             return
-        self._proc.terminate()
+        # pixi doesn't kill its task tree, so terminate()/kill() would leave the
+        # heavy grandchildren (octron/torch) running — kill the whole tree.
+        _kill_process_tree(int(self._proc.processId()))
         if not self._proc.waitForFinished(_KILL_GRACE_MS):
-            self._proc.kill()
+            self._proc.kill()  # backstop (and non-Windows, where _kill is a no-op)
             self._proc.waitForFinished(_KILL_GRACE_MS)
 
     # --- phases --------------------------------------------------------------
