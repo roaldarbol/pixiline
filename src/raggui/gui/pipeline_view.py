@@ -34,9 +34,10 @@ from PySide6.QtWidgets import (
 )
 
 from raggui.config import load_output_base, save_output_base
+from raggui.gui.dag_view import DagView
 from raggui.gui.status_flash import StatusFlash
 from raggui.jobs.job import Job
-from raggui.manifest import Pipeline, Step
+from raggui.manifest import Pipeline, Step, step_inputs_met
 
 
 def _pretty(name: str) -> str:
@@ -57,7 +58,12 @@ def _inputs_from_urls(urls) -> list[Path]:
 
 
 class _InputPanel(QWidget):
-    """Per-input controls: step checkboxes, output base, queue button."""
+    """Per-input controls: gated step checkboxes, output base, a DAG view, queue.
+
+    A step is enabled only when its inputs are satisfiable — by the dropped file,
+    by an artifact already on disk under the output base, or by another currently
+    selected step's outputs. Deselecting a step cascades to anything that depended
+    on it. The DAG below mirrors the selection (unselected steps greyed)."""
 
     queue_requested = Signal(object)  # self
 
@@ -65,11 +71,14 @@ class _InputPanel(QWidget):
         super().__init__()
         self._pipeline = pipeline
         self._input = input_path
+        self._order = pipeline.order()
         self._checks: dict[str, QCheckBox] = {}
+        self._selected: set[str] = set()
+        self._syncing = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setSpacing(10)
 
         title = QLabel(f"<b>{input_path.name}</b>")
         title.setTextFormat(Qt.TextFormat.RichText)
@@ -84,17 +93,21 @@ class _InputPanel(QWidget):
         heading.setTextFormat(Qt.TextFormat.RichText)
         root.addWidget(heading)
 
-        for step in pipeline.order():
+        for step in self._order:
             label = f"{step.label}  (optional)" if step.optional else step.label
             cb = QCheckBox(label)
-            cb.setChecked(not step.optional)  # required steps on by default
             cb.setToolTip(self._tooltip(step))
+            cb.toggled.connect(lambda checked, n=step.name: self._on_toggle(n, checked))
             self._checks[step.name] = cb
             root.addWidget(cb)
         if not pipeline.steps:
             warn = QLabel("This pipeline declares no steps (tasks with inputs/outputs).")
             warn.setStyleSheet("color: #d0883a;")
             root.addWidget(warn)
+
+        self._status = QLabel()
+        self._status.setWordWrap(True)
+        root.addWidget(self._status)
 
         root.addWidget(_hline())
         out_row = QHBoxLayout()
@@ -108,6 +121,14 @@ class _InputPanel(QWidget):
         out_row.addWidget(browse)
         root.addLayout(out_row)
 
+        # Rendered DAG of the steps, mirroring the selection.
+        self._dag = DagView(pipeline)
+        if pipeline.steps:
+            dag_heading = QLabel("Pipeline")
+            dag_heading.setStyleSheet("color: #888; padding-top: 4px;")
+            root.addWidget(dag_heading)
+            root.addWidget(self._dag)
+
         root.addStretch(1)
         queue_row = QHBoxLayout()
         self._queue_btn = QPushButton("Add to Queue")
@@ -117,6 +138,11 @@ class _InputPanel(QWidget):
         queue_row.addWidget(self._flash)
         queue_row.addWidget(self._queue_btn)
         root.addLayout(queue_row)
+
+        # Default: every required (non-optional) step, then drop any that aren't
+        # actually satisfiable from this input + on-disk artifacts.
+        self._selected = {s.name for s in self._order if not s.optional}
+        self._recompute()
 
     def _tooltip(self, step: Step) -> str:
         tip = f"{step.name}  (env: {step.env})"
@@ -128,8 +154,12 @@ class _InputPanel(QWidget):
     def input_path(self) -> Path:
         return self._input
 
+    @property
+    def stem(self) -> str:
+        return self._input.stem
+
     def selected_steps(self) -> list[str]:
-        return [name for name, cb in self._checks.items() if cb.isChecked()]
+        return [s.name for s in self._order if s.name in self._selected]
 
     def output_base(self) -> Path | None:
         text = self._out_edit.text().strip()
@@ -138,12 +168,71 @@ class _InputPanel(QWidget):
     def confirm_added(self) -> None:
         self._flash.flash("Added to queue ✓")
 
+    # --- gating --------------------------------------------------------------
+
+    def _satisfiable(self, step: Step, others: set[str]) -> bool:
+        produced = {o for n in others for o in self._pipeline.step(n).outputs}
+        return step_inputs_met(
+            step,
+            has_input=True,
+            output_base=self.output_base(),
+            stem=self.stem,
+            produced=produced,
+        )
+
+    def _on_toggle(self, name: str, checked: bool) -> None:
+        if self._syncing:
+            return
+        step = self._pipeline.step(name)
+        if step is None:
+            return
+        if checked:
+            if self._satisfiable(step, self._selected - {name}):
+                self._selected.add(name)
+        else:
+            self._selected.discard(name)
+        self._recompute()
+
+    def _recompute(self) -> None:
+        # Cascade: drop any selected step whose inputs are no longer satisfiable.
+        changed = True
+        while changed:
+            changed = False
+            for step in self._order:
+                if step.name in self._selected and not self._satisfiable(
+                    step, self._selected - {step.name}
+                ):
+                    self._selected.discard(step.name)
+                    changed = True
+        self._syncing = True
+        for step in self._order:
+            cb = self._checks[step.name]
+            cb.setChecked(step.name in self._selected)
+            cb.setEnabled(self._satisfiable(step, self._selected - {step.name}))
+        self._syncing = False
+        self._dag.set_selected(set(self._selected))
+        self._update_status()
+
+    def _update_status(self) -> None:
+        if not self._pipeline.steps:
+            return
+        chain = [self._pipeline.step(n).label for n in self.selected_steps()]
+        if chain:
+            self._status.setText("Will run:  " + " → ".join(chain))
+            self._status.setStyleSheet("color: #4caf50;")
+        else:
+            self._status.setText(
+                "Pick a step to run — only steps whose inputs are available are enabled."
+            )
+            self._status.setStyleSheet("color: #d0883a;")
+
     def _browse_output(self) -> None:
         chosen = QFileDialog.getExistingDirectory(self, "Choose output base", self._out_edit.text())
         if chosen:
             self._out_edit.setText(chosen)
             self._out_edit.setToolTip(chosen)
             save_output_base(Path(chosen))
+            self._recompute()  # existing outputs may enable more steps
 
 
 class _SettingsPanel(QWidget):

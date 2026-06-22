@@ -14,12 +14,16 @@ returns a :class:`Pipeline`; the GUI renders it and ``build_command`` turns a st
 from __future__ import annotations
 
 import fnmatch
+import glob as _glob
 import json
+import re
 import subprocess
 import tomllib
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+
+_TEMPLATE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,54 @@ def _produces(producer_output: str, consumer_input: str) -> bool:
     if o.endswith("/**") and i.startswith(o[:-2]):
         return True
     return fnmatch.fnmatch(i, o)
+
+
+def is_external_input(pattern: str) -> bool:
+    """Whether an input glob refers to the user-supplied file (``{{ input }}``)
+    rather than something in the output tree."""
+    return "input" in _TEMPLATE.findall(pattern)
+
+
+def resolve(pattern: str, values: dict[str, str]) -> str:
+    """Substitute ``{{ name }}`` placeholders from ``values`` (others left as-is)."""
+    return _TEMPLATE.sub(lambda m: values.get(m.group(1), m.group(0)), pattern)
+
+
+def artifact_present(pattern: str, output_base: Path | None, stem: str) -> bool:
+    """Whether the artifact an output-tree glob points to already exists on disk."""
+    if output_base is None:
+        return False
+    resolved = resolve(pattern, {"output": str(output_base), "stem": stem})
+    if any(c in resolved for c in "*?["):
+        try:
+            return bool(_glob.glob(resolved, recursive=True))
+        except OSError:
+            return False
+    return Path(resolved).exists()
+
+
+def step_inputs_met(
+    step: Step,
+    *,
+    has_input: bool,
+    output_base: Path | None,
+    stem: str,
+    produced: set[str],
+) -> bool:
+    """Whether every input of ``step`` is satisfiable: the external user file is
+    present, the artifact is already on disk, or a ``produced`` output glob (from
+    the steps selected so far) covers it."""
+    for pat in step.inputs:
+        if is_external_input(pat):
+            if not has_input:
+                return False
+            continue
+        if artifact_present(pat, output_base, stem):
+            continue
+        if any(_produces(o, pat) for o in produced):
+            continue
+        return False
+    return True
 
 
 def _workspace_name(root: Path) -> str:

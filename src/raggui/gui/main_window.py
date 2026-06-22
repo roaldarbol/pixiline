@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
         self._views.addWidget(self._jobs_panel)  # 1
 
         # --- Activity bar (far left) switches the views ---
-        self._activity = ActivityBar([("pipelines", "▦", "Pipelines"), ("jobs", "☰", "Jobs")])
+        self._activity = ActivityBar([("pipelines", "Pipelines"), ("jobs", "Jobs")])
         self._activity.view_selected.connect(self._on_view_selected)
 
         central = QWidget()
