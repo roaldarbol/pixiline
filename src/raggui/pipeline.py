@@ -215,7 +215,9 @@ def step_plan(
         end = start - 1
         for k in range(start, len(steps)):
             step = steps[k]
-            if not env_available(step.env) or not all(met_at_rest(n) or n in made for n in step.needs):
+            if not env_available(step.env) or not all(
+                met_at_rest(n) or n in made for n in step.needs
+            ):
                 break
             made.add(step.makes)
             end = k
@@ -243,8 +245,16 @@ def build_command(
     step = step_by_name().get(step_name)
     env = step.env if step is not None else ""
     cmd = [
-        pixi_executable(), "run", "-e", env, step_name,
-        "--", "--stem", stem, "--output", str(output_base),
+        pixi_executable(),
+        "run",
+        "-e",
+        env,
+        step_name,
+        "--",
+        "--stem",
+        stem,
+        "--output",
+        str(output_base),
     ]
     if step is not None and step.wants_input:
         cmd += ["--input", str(input_path)]

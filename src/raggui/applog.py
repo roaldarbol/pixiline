@@ -36,9 +36,9 @@ def setup() -> Path | None:
         log.add(
             path,
             level="INFO",
-            enqueue=True,        # thread-safe + flushed
+            enqueue=True,  # thread-safe + flushed
             backtrace=True,
-            diagnose=False,      # don't dump local variable values into tracebacks
+            diagnose=False,  # don't dump local variable values into tracebacks
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <7} | {message}",
         )
         _session_path = path

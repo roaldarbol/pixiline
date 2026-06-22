@@ -30,15 +30,17 @@ class JobQueue(QObject):
     job_added = Signal(int)
     job_pending = Signal(int)
     job_started = Signal(int)
-    job_progress = Signal(int, float)        # job_id, fraction
-    job_step = Signal(int, int, str)         # job_id, step_index, step_name
-    job_log = Signal(int, str)               # job_id, text
+    job_progress = Signal(int, float)  # job_id, fraction
+    job_step = Signal(int, int, str)  # job_id, step_index, step_name
+    job_log = Signal(int, str)  # job_id, text
     job_finished = Signal(int)
     job_failed = Signal(int, str)
     job_canceled = Signal(int)
     job_removed = Signal(int)
 
-    def __init__(self, max_workers: int = DEFAULT_MAX_WORKERS, parent: QObject | None = None) -> None:
+    def __init__(
+        self, max_workers: int = DEFAULT_MAX_WORKERS, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")

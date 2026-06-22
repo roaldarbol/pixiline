@@ -26,6 +26,7 @@ _yaml.preserve_quotes = True
 
 # --- config.yaml round-trip --------------------------------------------------
 
+
 def load_config() -> Any:
     with CONFIG_PATH.open("r", encoding="utf-8") as fh:
         return _yaml.load(fh)

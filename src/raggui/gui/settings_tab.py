@@ -119,7 +119,7 @@ class SettingsTab(QWidget):
         outer.setSpacing(12)
 
         general: list[tuple[Any, Any]] = []  # top-level scalars, if any
-        for key, value in (self._doc.items() if self._doc else []):
+        for key, value in self._doc.items() if self._doc else []:
             if key in _RESERVED_KEYS:
                 continue  # the pipeline definition (steps:) is structure, not a knob
             if is_section(value):

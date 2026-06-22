@@ -10,6 +10,8 @@ theme.
 
 from __future__ import annotations
 
+import contextlib
+
 import pyte
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
@@ -18,8 +20,8 @@ from PySide6.QtWidgets import QTextEdit
 from raggui import applog
 from raggui.gui.theme import is_dark, watch_app_palette
 
-_COLS, _ROWS = 120, 300        # terminal size (rows = how much scrollback is kept)
-_REFRESH_MS = 80               # repaint at most ~12x/sec
+_COLS, _ROWS = 120, 300  # terminal size (rows = how much scrollback is kept)
+_REFRESH_MS = 80  # repaint at most ~12x/sec
 
 # A palette per mode: background, default text, and the 16 ANSI colours (normal +
 # bright). The light set uses darker, saturated hues that read on a light field;
@@ -28,24 +30,48 @@ _DARK = {
     "bg": "#1e1e1e",
     "fg": "#d4d4d4",
     "ansi": {
-        "black": "#5c6370", "red": "#e06c75", "green": "#98c379", "brown": "#d19a66",
-        "blue": "#61afef", "magenta": "#c678dd", "cyan": "#56b6c2", "white": "#abb2bf",
+        "black": "#5c6370",
+        "red": "#e06c75",
+        "green": "#98c379",
+        "brown": "#d19a66",
+        "blue": "#61afef",
+        "magenta": "#c678dd",
+        "cyan": "#56b6c2",
+        "white": "#abb2bf",
     },
     "ansi_bright": {
-        "black": "#7f8696", "red": "#ff7b86", "green": "#b5e890", "brown": "#e5c07b",
-        "blue": "#7cc7ff", "magenta": "#e0a0f0", "cyan": "#74d3de", "white": "#ffffff",
+        "black": "#7f8696",
+        "red": "#ff7b86",
+        "green": "#b5e890",
+        "brown": "#e5c07b",
+        "blue": "#7cc7ff",
+        "magenta": "#e0a0f0",
+        "cyan": "#74d3de",
+        "white": "#ffffff",
     },
 }
 _LIGHT = {
     "bg": "#ffffff",
     "fg": "#1f2328",
     "ansi": {
-        "black": "#24292f", "red": "#cf222e", "green": "#1a7f37", "brown": "#9a6700",
-        "blue": "#0969da", "magenta": "#8250df", "cyan": "#1b7c83", "white": "#6e7781",
+        "black": "#24292f",
+        "red": "#cf222e",
+        "green": "#1a7f37",
+        "brown": "#9a6700",
+        "blue": "#0969da",
+        "magenta": "#8250df",
+        "cyan": "#1b7c83",
+        "white": "#6e7781",
     },
     "ansi_bright": {
-        "black": "#6e7781", "red": "#cf222e", "green": "#1a7f37", "brown": "#bc4c00",
-        "blue": "#0969da", "magenta": "#8250df", "cyan": "#1b7c83", "white": "#24292f",
+        "black": "#6e7781",
+        "red": "#cf222e",
+        "green": "#1a7f37",
+        "brown": "#bc4c00",
+        "blue": "#0969da",
+        "magenta": "#8250df",
+        "cyan": "#1b7c83",
+        "white": "#24292f",
     },
 }
 
@@ -94,10 +120,9 @@ class TerminalView(QTextEdit):
         self._dirty = True
 
     def feed(self, text: str) -> None:
-        try:
+        # never let a malformed escape sequence break the GUI
+        with contextlib.suppress(Exception):
             self._stream.feed(text)
-        except Exception:
-            pass  # never let a malformed escape sequence break the GUI
         self._dirty = True
 
     # --- sizing --------------------------------------------------------------
@@ -193,7 +218,9 @@ class TerminalView(QTextEdit):
             if not block.isValid():
                 continue
             cursor.setPosition(block.position())
-            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+            cursor.movePosition(
+                QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
+            )
             cursor.removeSelectedText()
             for text, fmt in self._row_runs(y):
                 cursor.insertText(text, fmt)

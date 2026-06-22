@@ -19,6 +19,12 @@ pyside6 = ">=6.7"        # GUI toolkit
 "ruamel.yaml" = "*"      # YAML round-trip (transitional)
 pyte = "*"               # terminal emulator for the live log (ANSI colour + in-place progress)
 loguru = "*"             # GUI/orchestrator session logging
+ruff = "*"               # linting / formatting (dev)
+
+# raggui itself, installed editable so it imports as a package and exposes the
+# `raggui` entry point. Runtime deps come from the conda env above.
+[pypi-dependencies]
+raggui = { path = ".", editable = true }
 
 [tasks]
-gui = "python src/raggui/__main__.py"
+gui = "raggui"

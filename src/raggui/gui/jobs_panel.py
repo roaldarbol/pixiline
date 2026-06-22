@@ -69,9 +69,7 @@ class JobRow(QWidget):
             "color: white; background: #4a9eff; border-radius: 6px; padding: 1px 6px;"
         )
         steps = step_by_name()
-        self.tag.setToolTip(
-            " → ".join(steps[s].label if s in steps else s for s in job.steps)
-        )
+        self.tag.setToolTip(" → ".join(steps[s].label if s in steps else s for s in job.steps))
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
@@ -176,7 +174,9 @@ class JobsPanel(QWidget):
 
     parallel_toggled = Signal(bool)
 
-    def __init__(self, queue: JobQueue, parallel_enabled: bool = False, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, queue: JobQueue, parallel_enabled: bool = False, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._queue = queue
         self._rows: dict[int, JobRow] = {}

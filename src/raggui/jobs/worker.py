@@ -11,6 +11,7 @@ fires.
 from __future__ import annotations
 
 import codecs
+import contextlib
 import datetime
 import subprocess
 import sys
@@ -43,26 +44,25 @@ def _kill_process_tree(pid: int) -> None:
     """
     if pid <= 0 or sys.platform != "win32":
         return  # POSIX falls back to QProcess.kill() in the caller
-    try:
+    with contextlib.suppress(OSError):
         subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],
             capture_output=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-    except OSError:
-        pass
+
 
 _PHASE_INSTALL = "install"
 _PHASE_RUN = "run"
 
 
 class Worker(QObject):
-    progress = Signal(int, float)        # job_id, fraction in [0, 1]
+    progress = Signal(int, float)  # job_id, fraction in [0, 1]
     step_changed = Signal(int, int, str)  # job_id, step_index, label
-    log = Signal(int, str)               # job_id, text chunk
-    finished = Signal(int)               # job_id
-    failed = Signal(int, str)            # job_id, message
-    canceled = Signal(int)               # job_id
+    log = Signal(int, str)  # job_id, text chunk
+    finished = Signal(int)  # job_id
+    failed = Signal(int, str)  # job_id, message
+    canceled = Signal(int)  # job_id
 
     def __init__(self, job: Job, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -75,7 +75,7 @@ class Worker(QObject):
         env = QProcessEnvironment.systemEnvironment()
         env.insert("PYTHONUNBUFFERED", "1")
         env.insert("PYTHONIOENCODING", "utf-8")
-        env.insert("FORCE_COLOR", "1")      # honoured by rich/click/etc.
+        env.insert("FORCE_COLOR", "1")  # honoured by rich/click/etc.
         env.insert("CLICOLOR_FORCE", "1")
         # loguru (octron/behaveai) ignores FORCE_COLOR; on Windows it only colours
         # when stdout is a TTY *or* TERM is set (loguru._colorama.should_colorize).
@@ -169,7 +169,9 @@ class Worker(QObject):
         # Fail fast if a required input isn't there (a prior step didn't produce
         # it, or the run started mid-chain without the prerequisites on disk).
         if step is not None:
-            missing = missing_needs(step, self._job.input_path, self._job.output_base, self._job.stem)
+            missing = missing_needs(
+                step, self._job.input_path, self._job.output_base, self._job.stem
+            )
             if missing:
                 self._fail(f"Step '{name}' is missing required input(s): {', '.join(missing)}")
                 return
@@ -217,7 +219,11 @@ class Worker(QObject):
         # Exited 0 — but verify it actually produced its declared output, so a
         # silent failure doesn't let the chain march on into missing data.
         step = step_by_name().get(name)
-        if step and step.makes and not artifact_present(step.makes, self._job.output_base, self._job.stem):
+        if (
+            step
+            and step.makes
+            and not artifact_present(step.makes, self._job.output_base, self._job.stem)
+        ):
             self._fail(f"Step '{name}' finished but did not produce its output: {step.makes}")
             return
         applog.log.info(f"Job {self._job.id}: step '{name}' done")

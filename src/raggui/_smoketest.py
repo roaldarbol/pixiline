@@ -38,8 +38,13 @@ def main() -> int:
     print("steps  :", ", ".join(s.name for s in steps) or "(none discovered)")
     if steps:
         s = steps[0]
-        print("cmd    :", " ".join(build_command(s.name, Path("clip.mp4"), Path("out"), "clip", overwrite=True)))
-        print("steps detail:", [(x.name, x.env, "input" if x.wants_input else "tree") for x in steps])
+        print(
+            "cmd    :",
+            " ".join(build_command(s.name, Path("clip.mp4"), Path("out"), "clip", overwrite=True)),
+        )
+        print(
+            "steps detail:", [(x.name, x.env, "input" if x.wants_input else "tree") for x in steps]
+        )
 
     # Build the full window.
     win = MainWindow()

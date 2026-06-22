@@ -18,8 +18,8 @@ _LOG_CHAR_CAP = 200_000  # keep the in-memory per-job log bounded
 
 
 class JobState(StrEnum):
-    QUEUED = "queued"      # staged, not yet released to run
-    PENDING = "pending"    # released, waiting for a free worker slot
+    QUEUED = "queued"  # staged, not yet released to run
+    PENDING = "pending"  # released, waiting for a free worker slot
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
@@ -38,12 +38,12 @@ class Job:
     """One recording and the steps to run for it."""
 
     input_path: Path
-    steps: list[str]                 # step names, canonical order
+    steps: list[str]  # step names, canonical order
     output_base: Path
     overwrite: bool = False
     id: int = field(default_factory=_next_job_id)
     state: JobState = JobState.QUEUED
-    current_step: int = 0            # index into steps of the step now running / next
+    current_step: int = 0  # index into steps of the step now running / next
     log: str = ""
     error: str = ""
 

@@ -146,7 +146,9 @@ class InputStepPanel(QWidget):
 
     add_to_queue_requested = Signal(object)  # emits self
 
-    def __init__(self, input_path: Path, output_base: Path | None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, input_path: Path, output_base: Path | None, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._input = input_path
 
@@ -177,10 +179,10 @@ class InputStepPanel(QWidget):
         self._req_pos = [i for i, s in enumerate(self._steps) if not s.optional]  # checkbox indices
         self._checks: list[QCheckBox] = []
         self._start: int | None = None  # position into _req_pos (required-chain start)
-        self._end: int | None = None    # position into _req_pos (required-chain end)
+        self._end: int | None = None  # position into _req_pos (required-chain end)
         self._opt_selected: set[int] = set()  # checkbox indices of selected optional steps
-        self._legal: list[bool] = []     # indexed by position in _req_pos
-        self._reach: list[int] = []      # indexed by position in _req_pos
+        self._legal: list[bool] = []  # indexed by position in _req_pos
+        self._reach: list[int] = []  # indexed by position in _req_pos
         self._syncing = False
         self._status = QLabel()
         self._status.setWordWrap(True)
@@ -193,14 +195,19 @@ class InputStepPanel(QWidget):
                 if step.optional:
                     tip += "\nOptional — off by default; nothing else depends on it."
                 if not env_available(step.env):
-                    tip += f"\n⚠ environment '{step.env}' is not defined in pixi.toml — this step can't run."
+                    tip += (
+                        f"\n⚠ environment '{step.env}' is not defined in pixi.toml"
+                        " — this step can't run."
+                    )
                 cb.setToolTip(tip)
                 cb.toggled.connect(lambda checked, idx=i: self._on_toggle(idx, checked))
                 self._checks.append(cb)
                 root.addWidget(cb)
             root.addWidget(self._status)
         else:
-            self._status.setText("No pipeline steps found. Define them in config.yaml under `steps:`.")
+            self._status.setText(
+                "No pipeline steps found. Define them in config.yaml under `steps:`."
+            )
             self._status.setStyleSheet("color: #d0883a;")
             root.addWidget(self._status)
 
@@ -219,7 +226,9 @@ class InputStepPanel(QWidget):
         out_row.addWidget(browse)
         root.addLayout(out_row)
 
-        self._overwrite = QCheckBox("Re-run steps even if their outputs already exist (--overwrite)")
+        self._overwrite = QCheckBox(
+            "Re-run steps even if their outputs already exist (--overwrite)"
+        )
         self._overwrite.setToolTip(
             "By default a step is skipped when its output is already present. Tick "
             "this to force the selected steps to rebuild for this input."
@@ -283,7 +292,8 @@ class InputStepPanel(QWidget):
                 self._start, self._end = s, e
         # Optional steps: any wanted one that is runnable here.
         self._opt_selected = {
-            i for i, st in enumerate(self._steps)
+            i
+            for i, st in enumerate(self._steps)
             if st.optional and st.name in want and self._optional_enabled(i)
         }
         self._sync()
@@ -344,18 +354,18 @@ class InputStepPanel(QWidget):
                 if legal[p]:
                     s = e = p
             elif p == e + 1 and e < reach[s]:
-                e = p                          # extend the end forward
+                e = p  # extend the end forward
             elif p == s - 1 and legal[p]:
-                s, e = p, min(e, reach[p])      # extend the start backward
+                s, e = p, min(e, reach[p])  # extend the start backward
         else:
             if s is not None:
-                if p == s:                      # drop the leading step
+                if p == s:  # drop the leading step
                     nxt = s + 1
                     if nxt > e or not legal[nxt]:
                         s = e = None
                     else:
                         s, e = nxt, min(e, reach[nxt])
-                elif s < p <= e:                # drop a step -> drop everything after it
+                elif s < p <= e:  # drop a step -> drop everything after it
                     e = p - 1
         self._start, self._end = s, e
         # An optional step may have depended on a now-deselected required step.
@@ -404,10 +414,13 @@ class InputStepPanel(QWidget):
             self._status.setStyleSheet("color: #4caf50;")
         else:
             startable = any(self._legal) or any(
-                self._steps[i].optional and self._optional_enabled(i) for i in range(len(self._steps))
+                self._steps[i].optional and self._optional_enabled(i)
+                for i in range(len(self._steps))
             )
             if startable:
-                self._status.setText("Pick a step to run — only steps whose inputs are available are enabled.")
+                self._status.setText(
+                    "Pick a step to run — only steps whose inputs are available are enabled."
+                )
             else:
                 self._status.setText(
                     "No step can start yet. Choose the output directory to detect existing outputs."

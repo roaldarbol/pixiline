@@ -9,6 +9,7 @@ file has the finished value of each line, not the progress spam.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from pathlib import Path
 
@@ -95,8 +96,6 @@ class SettledLog:
             elif mode == "2":
                 self._line = ""
         elif final == "G":  # cursor to column (1-based)
-            try:
+            with contextlib.suppress(ValueError):
                 self._col = max(0, int(params or "1") - 1)
-            except ValueError:
-                pass
         # other sequences (SGR colour 'm', cursor moves, etc.) are dropped

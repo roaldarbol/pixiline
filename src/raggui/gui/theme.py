@@ -56,7 +56,7 @@ class _PaletteWatcher(QObject):
         if app is not None:
             app.installEventFilter(self)
 
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt override)
         if event.type() == QEvent.Type.ApplicationPaletteChange:
             self._timer.start(0)  # defer + coalesce; never re-style mid-delivery
         return False
