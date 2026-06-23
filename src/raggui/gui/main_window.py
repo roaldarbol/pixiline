@@ -142,9 +142,9 @@ class MainWindow(QMainWindow):
         if base not in existing:
             return base
         n = 2
-        while f"{base} ({n})" in existing:
+        while f"{base}_{n}" in existing:
             n += 1
-        return f"{base} ({n})"
+        return f"{base}_{n}"
 
     def _rename_pipeline(self, row: int, name: str) -> None:
         if not (0 <= row < len(self._pipeline_views)):
