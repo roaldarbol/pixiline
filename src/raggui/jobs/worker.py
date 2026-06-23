@@ -20,7 +20,7 @@ from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from raggui import applog
 from raggui.jobs.job import Job, JobState
 from raggui.jobs.termlog import SettledLog
-from raggui.manifest import build_command, step_inputs_met
+from raggui.manifest import artifact_present, build_command, step_inputs_met
 from raggui.paths import pixi_executable
 
 _KILL_GRACE_MS = 3000
@@ -167,6 +167,19 @@ class Worker(QObject):
             if step is None:
                 self._fail(f"Step '{name}' is not defined in the pipeline.")
                 return
+            # Skip if already done (its output marker exists). Pixi's own caching is
+            # inert on these paths, so raggui decides; delete the output to re-run.
+            if step.outputs and all(
+                artifact_present(o, self._job.output_base, self._job.stem) for o in step.outputs
+            ):
+                self._emit_log(
+                    f"\n[skipping '{name}': output already present — delete it to re-run]\n"
+                )
+                applog.log.info(f"Job {self._job.id}: step '{name}' skipped (already done)")
+                self._produced |= set(step.outputs)
+                self._job.current_step += 1
+                self.progress.emit(self._job.id, self._job.fraction())
+                continue
             if not step_inputs_met(
                 step,
                 has_input=True,

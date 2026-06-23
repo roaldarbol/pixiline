@@ -65,11 +65,14 @@ class Job:
 
     @property
     def values(self) -> dict[str, str]:
-        """The full arg values for this run: the run identity plus the tunables."""
+        """The full arg values for this run: the run identity plus the tunables.
+
+        Paths are POSIX (forward-slash) so the templated globs Pixi builds don't mix
+        separators (``C:\\a`` + ``/b``), which trips its path handling on Windows."""
         return {
             "stem": self.stem,
-            "output": str(self.output_base),
-            "input": str(self.input_path),
+            "output": self.output_base.as_posix(),
+            "input": self.input_path.as_posix(),
             **self.settings,
         }
 
