@@ -66,6 +66,19 @@ class Worker(QObject):
         # Stream live (no block-buffering when stdout isn't a TTY), force colour
         # on, and pin a width so progress bars size to the log terminal's screen.
         env = QProcessEnvironment.systemEnvironment()
+        # raggui runs under `pixi run gui`, which exports PIXI_*/SSL_CERT vars that
+        # would leak into the pipeline's own `pixi run` (wrong manifest, missing
+        # certs). Drop them so the child resolves the pipeline's manifest cleanly.
+        for leaked in (
+            "PIXI_PROJECT_MANIFEST",
+            "PIXI_PROJECT_ROOT",
+            "PIXI_ENVIRONMENT_NAME",
+            "PIXI_PROJECT_NAME",
+            "PIXI_IN_SHELL",
+            "SSL_CERT_DIR",
+            "SSL_CERT_FILE",
+        ):
+            env.remove(leaked)
         env.insert("PYTHONUNBUFFERED", "1")
         env.insert("PYTHONIOENCODING", "utf-8")
         env.insert("FORCE_COLOR", "1")  # honoured by rich/click/etc.
