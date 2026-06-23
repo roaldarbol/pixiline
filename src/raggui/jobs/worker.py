@@ -130,6 +130,7 @@ class Worker(QObject):
         if self._proc.state() == QProcess.ProcessState.NotRunning:
             self._job.state = JobState.CANCELED
             applog.log.info(f"Job {self._job.id} canceled")
+            self._emit_log("\n\x1b[1;33m⊘  Job canceled\x1b[0m\n")  # bold amber
             self._close_log()
             self.canceled.emit(self._job.id)
             return
@@ -222,6 +223,7 @@ class Worker(QObject):
         if self._canceled:
             self._job.state = JobState.CANCELED
             applog.log.info(f"Job {self._job.id} canceled")
+            self._emit_log("\n\x1b[1;33m⊘  Job canceled\x1b[0m\n")  # bold amber
             self._close_log()
             self.canceled.emit(self._job.id)
             return
@@ -262,6 +264,7 @@ class Worker(QObject):
         """All selected steps have run or been skipped — the job is done."""
         self._job.state = JobState.DONE
         applog.log.info(f"Job {self._job.id} done")
+        self._emit_log("\n\x1b[1;32m✓  Job finished\x1b[0m\n")  # bold green
         self._close_log()
         self.finished.emit(self._job.id)
 
@@ -270,7 +273,7 @@ class Worker(QObject):
         self._job.state = JobState.FAILED
         self._job.error = message
         applog.log.error(f"Job {self._job.id} failed: {message}")
-        self._emit_log(f"\n[{message}]\n")
+        self._emit_log(f"\n\x1b[1;31m✗  Job failed: {message}\x1b[0m\n")  # bold red
         self._close_log()
         self.failed.emit(self._job.id, message)
 
