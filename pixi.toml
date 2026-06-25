@@ -1,7 +1,7 @@
 [workspace]
 authors = ["Mikkel Roald-Arboel <25629697+roaldarbol@users.noreply.github.com>"]
 name = "pixiline"
-version = "0.1.0"
+version = "0.1.1"
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64"]
 

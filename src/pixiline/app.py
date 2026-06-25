@@ -2,19 +2,34 @@
 
 from __future__ import annotations
 
+import argparse
 import signal
 import sys
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-from pixiline import applog
+from pixiline import __version__, applog
 from pixiline.gui.main_window import MainWindow
 from pixiline.resources import app_icon
 
 
-def main() -> int:
-    """Start the Qt event loop and return its exit code."""
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="pixiline",
+        description="A generic Pixi-pipeline manager GUI.",
+    )
+    parser.add_argument("--version", action="version", version=f"pixiline {__version__}")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Start the Qt event loop and return its exit code.
+
+    ``--version``/``--help`` are handled here (and exit) before any Qt setup, so
+    they work without a display.
+    """
+    _parse_args(argv)
     applog.setup()
     applog.install_excepthook()  # a crash leaves a traceback in the GUI log
     qt_app = QApplication.instance() or QApplication(sys.argv)
