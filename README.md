@@ -9,8 +9,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/roaldarbol/pixiline/actions/workflows/tests.yml"><img src="https://github.com/roaldarbol/pixiline/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://codecov.io/gh/roaldarbol/pixiline"><img src="https://codecov.io/gh/roaldarbol/pixiline/graph/badge.svg" alt="Coverage"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 ---
@@ -94,6 +97,16 @@ To work on it from a checkout:
 
 ```bash
 pixi run pixiline          # launch the app
-pixi run ruff check src    # lint
-pixi run ruff format src   # format
+pixi run -e dev test       # run the test suite (with coverage)
+pixi run -e dev lint       # ruff check
+pixi run -e dev format     # ruff format
 ```
+
+Tests cover the orchestration core — the pipeline/graph model, the job model, the
+queue state machine, the terminal log settler, and the small config/paths
+helpers. The Qt widgets and the subprocess Worker are exercised by hand rather
+than in CI.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
