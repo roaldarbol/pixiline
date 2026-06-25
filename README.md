@@ -12,7 +12,7 @@ with its own environments and tasks.
 ## Run
 
 ```sh
-pixi run gui
+pixi run pixiline
 ```
 
 ## The pipeline model

@@ -22,9 +22,7 @@ loguru = "*"             # GUI/orchestrator session logging
 ruff = "*"               # linting / formatting (dev)
 
 # pixiline itself, installed editable so it imports as a package and exposes the
-# `pixiline` entry point. Runtime deps come from the conda env above.
+# `pixiline` entry point (run with `pixi run pixiline`). Runtime deps come from
+# the conda env above.
 [pypi-dependencies]
 pixiline = { path = ".", editable = true }
-
-[tasks]
-gui = "pixiline"
