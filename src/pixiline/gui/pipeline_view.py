@@ -81,6 +81,7 @@ class PipelineView(QWidget):
         split.addWidget(self._build_inputs())
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 0)
+        split.setChildrenCollapsible(False)  # no panel can be dragged to nothing
         split.setSizes([760, 300])
         layout.addWidget(split)
 
@@ -100,9 +101,9 @@ class PipelineView(QWidget):
         center.setStretchFactor(0, 0)
         center.setStretchFactor(1, 1)  # Steps (the DAG) is the primary control
         center.setStretchFactor(2, 1)
-        # The Steps card can't be collapsed; its minimum height keeps the whole DAG
-        # (+ description) visible, so dragging the handle above/below it stops there.
-        center.setCollapsible(1, False)
+        # No card can be collapsed to nothing. The Steps card additionally has a
+        # minimum height (its body's) that keeps the whole DAG + description visible.
+        center.setChildrenCollapsible(False)
         center.setSizes([86, 420, 300])
         v.addWidget(center)
         return wrap

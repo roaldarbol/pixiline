@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         psplit.addWidget(self._workbench)
         psplit.setStretchFactor(0, 0)
         psplit.setStretchFactor(1, 1)
+        psplit.setChildrenCollapsible(False)  # no panel can be dragged to nothing
         psplit.setSizes([240, 1000])
         pv.addWidget(psplit)
 

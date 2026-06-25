@@ -219,6 +219,7 @@ class JobsPanel(QWidget):
 
         # Split: job list (top) over log pane (bottom).
         split = QSplitter(Qt.Orientation.Vertical, self)
+        split.setChildrenCollapsible(False)  # neither pane can be dragged to nothing
 
         list_container = QWidget()
         list_layout = QVBoxLayout(list_container)
