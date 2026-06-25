@@ -3,14 +3,14 @@ authors = ["Mikkel Roald-Arboel <25629697+roaldarbol@users.noreply.github.com>"]
 name = "pixiline"
 version = "0.1.0"
 channels = ["conda-forge"]
-platforms = ["win-64"]
+platforms = ["win-64", "linux-64"]
 
 # pixiline - a generic Pixi-pipeline manager GUI.
 #
 # It loads a pipeline's `pixi.toml` (whose `[tasks]` ARE the pipeline steps),
 # lets you pick steps + inputs, queues them, and runs/monitors the jobs. It must
 # NOT depend on any pipeline's stack (torch, octron, R, ...) - those live in their
-# own Pixi workspaces. An example pipeline ships alongside, in ./sleep-staging.
+# own Pixi workspaces.
 #
 # Kept deliberately minimal.
 [dependencies]
@@ -19,10 +19,25 @@ pyside6 = ">=6.7"        # GUI toolkit
 "ruamel.yaml" = "*"      # YAML round-trip (transitional)
 pyte = "*"               # terminal emulator for the live log (ANSI colour + in-place progress)
 loguru = "*"             # GUI/orchestrator session logging
-ruff = "*"               # linting / formatting (dev)
 
 # pixiline itself, installed editable so it imports as a package and exposes the
 # `pixiline` entry point (run with `pixi run pixiline`). Runtime deps come from
 # the conda env above.
 [pypi-dependencies]
 pixiline = { path = ".", editable = true }
+
+# Development environment: linting + the test suite. Activate with `-e dev`,
+# e.g. `pixi run -e dev test`.
+[feature.dev.dependencies]
+ruff = "*"          # linting / formatting
+pytest = ">=8"      # test runner
+pytest-cov = "*"    # coverage measurement (-> coverage.xml for Codecov)
+pytest-qt = "*"     # QApplication fixture for the Qt-touching tests
+
+[feature.dev.tasks]
+test = "pytest"
+lint = "ruff check src tests"
+format = "ruff format src tests"
+
+[environments]
+dev = ["dev"]

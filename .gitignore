@@ -6,6 +6,12 @@ __pycache__/
 *.py[cod]
 .ruff_cache
 
+# Tests / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # Output artefacts (the output dir is chosen by the user, but ignore ./output)
 output/
 

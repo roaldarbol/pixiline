@@ -20,11 +20,36 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pixiline"]
 
+# --- Pytest / coverage ------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=pixiline --cov-report=xml --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["pixiline"]
+# Coverage measures the orchestration core (manifest, jobs, config, paths). The
+# pure-presentation widgets, the Qt/subprocess Worker, and app bootstrap need a
+# real display + a live pipeline to exercise, so they are out of scope for unit
+# tests and excluded from the reported figure.
+omit = [
+  "*/gui/*",
+  "*/jobs/worker.py",
+  "*/app.py",
+  "*/__main__.py",
+  "*/_smoketest.py",
+  "*/resources.py",
+  "*/applog.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
 # --- Ruff -------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = [
