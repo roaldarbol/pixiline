@@ -1,47 +1,99 @@
-# pixiline
+<p align="center">
+  <img src="src/pixiline/assets/orchestrator.png" alt="pixiline logo" width="200">
+</p>
 
-A generic **Pixi-pipeline manager** GUI. Point it at a pipeline's `pixi.toml`
-(whose `[tasks]` are the pipeline steps), pick which steps to run and the inputs
-to run them on, queue them, and watch them execute with a live terminal log.
+<h1 align="center">pixiline</h1>
 
-pixiline owns the **orchestration/monitoring** layer only — the queue, step gating,
-process-tree-safe cancellation, per-run + session logging, and a colour terminal.
-It carries **no** pipeline dependencies; each pipeline is its own Pixi workspace
-with its own environments and tasks.
+<p align="center">
+  <em>Run and monitor any Pixi-defined pipeline from one window.</em>
+</p>
 
-## Run
+<p align="center">
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"></a>
+</p>
 
-```sh
-pixi run pixiline
-```
+---
+
+pixiline turns a [Pixi](https://pixi.sh) workspace into a runnable pipeline you can drive from a GUI. Point it at a pipeline's `pixi.toml` — whose `[tasks]` *are* the pipeline steps — and it reads the steps, their inputs and tunable settings, and the dependency graph between them. Pick what to run and what to run it on, queue the jobs, and watch them execute in a live colour terminal you can cancel from.
+
+It's organized like an editor: a VSCode-style **activity bar** switches between a **Pipelines** view (the loaded pipelines and the active one's workbench) and a single, app-wide **Jobs** view (the queue/monitor shared by every pipeline). You can load several pipelines side by side and run jobs from any of them into the same queue.
+
+pixiline owns the **orchestration and monitoring** layer only — the queue, dependency-aware step gating, process-tree-safe cancellation, per-run and per-session logging, and the terminal. It carries **no pipeline dependencies of its own**: each pipeline is its own Pixi workspace with its own environments and tasks, and pixiline simply runs them via `pixi`.
+
+## What you can do
+
+- **Load pipelines** — drop a `pixi.toml` (or a folder containing one) onto the window, or use **Add pipeline…**. Each loaded pipeline appears in the left list; you can rename or duplicate them and load as many as you like.
+- **Pick steps** — the **Steps** tab lists every runnable step (a `[tasks.<name>]` with `inputs`/`outputs`) and shows how they connect as a **DAG** derived from matching one step's outputs to another's inputs. Step gating is dependency-aware, so you only run what's ready.
+- **Choose inputs** — the **Inputs** tab is where you pick the files/recordings to run on and the output directory; they apply across the pipeline.
+- **Tune settings** — the **Settings** tab is generated from each task's typed `args` (defaults and `choices`), so a pipeline's knobs become a form without any extra config.
+- **Queue and run** — **Add to Queue** stages jobs; the **Jobs** view collects everything from every pipeline. **Start all** or tick rows and **Start selected**; **Cancel** stops a running job (killing the whole process tree), **Remove selected** drops staged ones, and **Clear finished** tidies up.
+- **Run in parallel** — a **Parallel (up to N)** toggle runs several jobs at once, with the worker count suggested from your machine.
+- **Watch it happen** — every run streams to a live terminal with real ANSI colour and in-place progress, and a slim status strip along the bottom always shows counts + progress from whichever view you're on.
+- **Skip what's done** — because steps declare `inputs`/`outputs` globs, Pixi's up-to-date caching is reused to skip work that's already current.
 
 ## The pipeline model
 
-A pipeline is described entirely by its `pixi.toml`:
+A pipeline is described entirely by its `pixi.toml` — there is no `config.yaml` and no per-step wrapper scripts:
 
-- a **step** is a `[tasks.<name>]` with an environment (the feature it's under),
-  typed `args` (the run identity `stem`/`output`/`input` plus tunable knobs with
-  `default`/`choices`), `inputs`/`outputs` globs, and a `description`.
+- a **step** is a `[tasks.<name>]` with an environment (the feature it runs under),
+  typed `args` (the run identity plus tunable knobs with `default`/`choices`),
+  `inputs`/`outputs` globs, and a `description`.
 - the **dependency graph** is derived by matching one step's `outputs` to another
-  step's `inputs` (no separate graph file); the same globs drive Pixi's
-  skip-if-up-to-date caching.
-- the **Settings** form is generated from each task's `args`.
+  step's `inputs` — no separate graph file.
+- the **Settings** form and the **Steps** DAG are both generated from that metadata.
 
-There is no `config.yaml` and no per-step wrapper scripts — `pixi.toml` is the
-single source of truth.
+`pixi.toml` is the single source of truth.
 
-## Example pipeline
+## Install
 
-[`./sleep-staging`](./sleep-staging) is a complete example: spider-sleep
-segmentation (motion-colour → tracking → export → R analysis), defined purely as
-Pixi tasks. It's a sibling workspace and is the temporary home of that pipeline
-until it moves to its own repository.
+pixiline is built as a conda package (with [rattler-build](https://rattler.build)). Once published you'll be able to:
 
-## Layout
-
+```bash
+pixi add pixiline
+# or
+conda install -c conda-forge pixiline
 ```
-pixi.toml            # this app's env (PySide6 + helpers) and the `gui` task
-src/pixiline/          # the GUI
-src/tools/           # build helpers (icon generation)
-sleep-staging/       # example pipeline workspace (own pixi.toml + resources)
+
+In the meantime, run it straight from a checkout — [pixi](https://pixi.sh) handles the environment:
+
+```bash
+git clone https://github.com/roaldarbol/pixiline
+cd pixiline
+pixi run pixiline
+```
+
+## Using it
+
+```bash
+pixiline   # opens with no pipeline loaded
+```
+
+1. **Add a pipeline** — drag a pipeline's `pixi.toml` (or its folder) onto the window, or click **Add pipeline…**. It joins the list on the left.
+2. **Set it up** — in the active pipeline's workbench, choose what to run in **Steps**, the files and output directory in **Inputs**, and any knobs in **Settings**.
+3. **Queue it** — **Add to Queue** stages the jobs for the steps you picked.
+4. **Run it** — switch to the **Jobs** view and **Start all** (or **Start selected**). Watch the live terminal, flip **Parallel** on to run several at once, and **Cancel** anything you need to.
+
+## Contributing
+
+The codebase is small and meant to stay readable. Layout:
+
+```text
+src/pixiline/app.py        # Qt application entry point (the `pixiline` command)
+src/pixiline/manifest.py   # parse a pipeline's pixi.toml into steps + the DAG
+src/pixiline/gui/          # PySide6 widgets: activity bar, pipelines sidebar,
+                           #   pipeline workbench (Inputs/Steps/Settings), DAG view,
+                           #   jobs panel, colour terminal, theming
+src/pixiline/jobs/         # job queue + per-job worker (process-tree-safe cancel),
+                           #   settled terminal logging
+src/pixiline/config.py     # QSettings persistence (output dir, parallel toggle)
+src/pixiline/{paths,resources,applog}.py  # pixi discovery, icons, session logging
+```
+
+To work on it from a checkout:
+
+```bash
+pixi run pixiline          # launch the app
+pixi run ruff check src    # lint
+pixi run ruff format src   # format
 ```
