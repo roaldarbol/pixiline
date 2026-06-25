@@ -1,7 +1,7 @@
 """Locating the ``pixi`` launcher.
 
-raggui no longer has a fixed pipeline root - a pipeline's location comes from the
-``pixi.toml`` the user drops in (see :mod:`raggui.manifest`). The only path we need
+pixiline no longer has a fixed pipeline root - a pipeline's location comes from the
+``pixi.toml`` the user drops in (see :mod:`pixiline.manifest`). The only path we need
 globally is the ``pixi`` executable used to query and run pipelines.
 """
 

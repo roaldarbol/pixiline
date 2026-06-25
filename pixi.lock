@@ -1027,5 +1027,5 @@ packages:
   size: 388453
   timestamp: 1764777142545
 - pypi: .
-  name: raggui
+  name: pixiline
   requires_python: '>=3.11'

@@ -1,7 +1,7 @@
 """Small GUI preferences, persisted via ``QSettings``.
 
 Pipeline parameters are no longer stored here - they live in each pipeline's
-``pixi.toml`` (task ``args``) and are read via :mod:`raggui.manifest`. This module
+``pixi.toml`` (task ``args``) and are read via :mod:`pixiline.manifest`. This module
 only keeps cross-session GUI preferences that aren't pipeline parameters.
 """
 

@@ -1,6 +1,6 @@
 """Generate square app icons (a PNG set + a multi-size .ico) from the logo.
 
-The logo (``src/raggui/assets/orchestrator.png``) is not necessarily
+The logo (``src/pixiline/assets/orchestrator.png``) is not necessarily
 square; app icons must be, so each size is the logo scaled to fit and centered on
 a transparent square. Re-run whenever the logo changes (in the gui environment):
 
@@ -18,7 +18,7 @@ from pathlib import Path
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
 from PySide6.QtGui import QGuiApplication, QImage, QPainter
 
-_ASSETS = Path(__file__).resolve().parent.parent / "raggui" / "assets"
+_ASSETS = Path(__file__).resolve().parent.parent / "pixiline" / "assets"
 _LOGO = _ASSETS / "orchestrator.png"
 _ICON_DIR = _ASSETS / "icons"
 

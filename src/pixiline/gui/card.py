@@ -1,11 +1,11 @@
 """A titled 'card': a header strip attached to arbitrary content, styled as one
-rounded, bordered unit. The non-list sibling of :class:`raggui.gui.list_card`."""
+rounded, bordered unit. The non-list sibling of :class:`pixiline.gui.list_card`."""
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
-from raggui.gui.theme import border_color, primary_surface, secondary_surface, watch_app_palette
+from pixiline.gui.theme import border_color, primary_surface, secondary_surface, watch_app_palette
 
 
 class Card(QWidget):

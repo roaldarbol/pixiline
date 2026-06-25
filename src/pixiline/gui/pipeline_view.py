@@ -32,13 +32,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from raggui.config import load_output_base, save_output_base
-from raggui.gui.card import Card
-from raggui.gui.dag_view import DagView
-from raggui.gui.list_card import ListCard
-from raggui.gui.status_flash import StatusFlash
-from raggui.jobs.job import Job
-from raggui.manifest import Pipeline
+from pixiline.config import load_output_base, save_output_base
+from pixiline.gui.card import Card
+from pixiline.gui.dag_view import DagView
+from pixiline.gui.list_card import ListCard
+from pixiline.gui.status_flash import StatusFlash
+from pixiline.jobs.job import Job
+from pixiline.manifest import Pipeline
 
 # Applied only when the button is enabled; cleared (back to the normal button) when
 # disabled, so it doesn't shout while it can't be clicked.

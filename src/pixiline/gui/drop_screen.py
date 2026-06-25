@@ -1,6 +1,6 @@
 """Empty-state screen: drop (or browse to) a ``pixi.toml`` to add a pipeline.
 
-Shows the raggui logo and a hint; accepts a dropped ``pixi.toml`` file or a folder
+Shows the pixiline logo and a hint; accepts a dropped ``pixi.toml`` file or a folder
 that contains one, and emits the pipeline's root directory.
 """
 
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from raggui.resources import logo_pixmap
+from pixiline.resources import logo_pixmap
 
 
 def pipeline_root_from(path: Path) -> Path | None:
@@ -62,7 +62,7 @@ class DropScreen(QWidget):
             logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v.addWidget(logo)
 
-        title = QLabel("raggui")
+        title = QLabel("pixiline")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 20px; font-weight: bold; padding-top: 8px;")
         v.addWidget(title)

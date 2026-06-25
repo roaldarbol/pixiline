@@ -5,7 +5,7 @@ event leaves a durable record even when the live terminal view is gone. This is
 the GUI's *own* log (job/step events, errors); the full tool output of a run is
 written separately per recording (see jobs.termlog).
 
-The file lives in ``~/.raggui/logs/raggui-<timestamp>.log``. Import ``log`` and
+The file lives in ``~/.pixiline/logs/pixiline-<timestamp>.log``. Import ``log`` and
 call ``log.info(...)`` / ``log.error(...)`` / ``log.exception(...)`` (loguru, so
 messages use ``{}`` formatting or f-strings).
 """
@@ -27,10 +27,10 @@ def setup() -> Path | None:
     if _session_path is not None:
         return _session_path
     try:
-        log_dir = Path.home() / ".raggui" / "logs"
+        log_dir = Path.home() / ".pixiline" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        path = log_dir / f"raggui-{stamp}.log"
+        path = log_dir / f"pixiline-{stamp}.log"
         log.add(
             path,
             level="INFO",
@@ -40,7 +40,7 @@ def setup() -> Path | None:
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <7} | {message}",
         )
         _session_path = path
-        log.info("raggui session started")
+        log.info("pixiline session started")
         return path
     except OSError:
         return None

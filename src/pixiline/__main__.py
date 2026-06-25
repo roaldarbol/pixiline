@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from raggui.app import main  # noqa: E402 (after sys.path setup)
+from pixiline.app import main  # noqa: E402 (after sys.path setup)
 
 if __name__ == "__main__":
     raise SystemExit(main())

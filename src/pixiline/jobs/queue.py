@@ -13,8 +13,8 @@ from collections import deque
 
 from PySide6.QtCore import QObject, Signal
 
-from raggui.jobs.job import Job, JobState
-from raggui.jobs.worker import Worker
+from pixiline.jobs.job import Job, JobState
+from pixiline.jobs.worker import Worker
 
 DEFAULT_MAX_WORKERS = 1
 

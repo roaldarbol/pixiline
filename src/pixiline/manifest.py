@@ -275,7 +275,7 @@ def build_command(step: Step, values: dict[str, str], pixi_exe: str = "pixi") ->
 
     ``-q`` silences Pixi's own chatter (the task echo, manifest/SSL warnings, and
     the inert 'No files matched' cache warnings) while keeping the task's output;
-    raggui already echoes the command itself.
+    pixiline already echoes the command itself.
     """
     argv = [pixi_exe, "run", "-q", "-e", step.env, step.name]
     for a in step.args:

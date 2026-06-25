@@ -1,11 +1,11 @@
 [workspace]
 authors = ["Mikkel Roald-Arboel <25629697+roaldarbol@users.noreply.github.com>"]
-name = "raggui"
+name = "pixiline"
 version = "0.1.0"
 channels = ["conda-forge"]
 platforms = ["win-64"]
 
-# raggui - a generic Pixi-pipeline manager GUI.
+# pixiline - a generic Pixi-pipeline manager GUI.
 #
 # It loads a pipeline's `pixi.toml` (whose `[tasks]` ARE the pipeline steps),
 # lets you pick steps + inputs, queues them, and runs/monitors the jobs. It must
@@ -21,10 +21,10 @@ pyte = "*"               # terminal emulator for the live log (ANSI colour + in-
 loguru = "*"             # GUI/orchestrator session logging
 ruff = "*"               # linting / formatting (dev)
 
-# raggui itself, installed editable so it imports as a package and exposes the
-# `raggui` entry point. Runtime deps come from the conda env above.
+# pixiline itself, installed editable so it imports as a package and exposes the
+# `pixiline` entry point. Runtime deps come from the conda env above.
 [pypi-dependencies]
-raggui = { path = ".", editable = true }
+pixiline = { path = ".", editable = true }
 
 [tasks]
-gui = "raggui"
+gui = "pixiline"

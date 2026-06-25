@@ -1,5 +1,5 @@
 [project]
-name = "raggui"
+name = "pixiline"
 version = "0.1.0"
 description = "A generic Pixi-pipeline manager GUI."
 authors = [{ name = "Mikkel Roald-Arboel" }]
@@ -7,18 +7,18 @@ readme = "README.md"
 requires-python = ">=3.11"
 # Runtime dependencies are provided by the Pixi environment (conda-forge), so they
 # are intentionally not pinned here; this metadata is for the editable install and
-# the `raggui` entry point.
+# the `pixiline` entry point.
 dependencies = []
 
 [project.scripts]
-raggui = "raggui.app:main"
+pixiline = "pixiline.app:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/raggui"]
+packages = ["src/pixiline"]
 
 # --- Ruff -------------------------------------------------------------------
 [tool.ruff]
@@ -40,4 +40,4 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["raggui"]
+known-first-party = ["pixiline"]

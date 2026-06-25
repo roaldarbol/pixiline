@@ -14,7 +14,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QAbstractButton, QButtonGroup, QVBoxLayout, QWidget
 
-from raggui.gui.theme import border_color, is_dark, secondary_surface, watch_app_palette
+from pixiline.gui.theme import border_color, is_dark, secondary_surface, watch_app_palette
 
 _ACCENT = "#4a9eff"
 

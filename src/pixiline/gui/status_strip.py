@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
-from raggui.jobs.job import JobState
-from raggui.jobs.queue import JobQueue
+from pixiline.jobs.job import JobState
+from pixiline.jobs.queue import JobQueue
 
 
 class StatusStrip(QWidget):

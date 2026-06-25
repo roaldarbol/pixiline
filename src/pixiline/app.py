@@ -8,9 +8,9 @@ import sys
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-from raggui import applog
-from raggui.gui.main_window import MainWindow
-from raggui.resources import app_icon
+from pixiline import applog
+from pixiline.gui.main_window import MainWindow
+from pixiline.resources import app_icon
 
 
 def main() -> int:
@@ -18,9 +18,9 @@ def main() -> int:
     applog.setup()
     applog.install_excepthook()  # a crash leaves a traceback in the GUI log
     qt_app = QApplication.instance() or QApplication(sys.argv)
-    qt_app.setApplicationName("raggui")
-    qt_app.setApplicationDisplayName("raggui")
-    # organizationName completes the QSettings storage path (see raggui.config).
+    qt_app.setApplicationName("pixiline")
+    qt_app.setApplicationDisplayName("pixiline")
+    # organizationName completes the QSettings storage path (see pixiline.config).
     qt_app.setOrganizationName("PixiPipelineOrchestrator")
     qt_app.setWindowIcon(app_icon())
 

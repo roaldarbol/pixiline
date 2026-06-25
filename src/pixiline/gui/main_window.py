@@ -5,7 +5,7 @@ A VSCode-style activity bar (far left) switches between top-level views:
     workbench (Inputs + Settings), or a drop screen when none are loaded.
   * Jobs — the single, app-wide job queue/monitor shared by every pipeline.
 
-raggui opens with no pipeline; dropping (or browsing to) a ``pixi.toml`` adds one.
+pixiline opens with no pipeline; dropping (or browsing to) a ``pixi.toml`` adds one.
 """
 
 from __future__ import annotations
@@ -22,23 +22,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from raggui.config import load_parallel_enabled, save_parallel_enabled
-from raggui.gui.activity_bar import ActivityBar
-from raggui.gui.drop_screen import DropScreen
-from raggui.gui.jobs_panel import JobsPanel
-from raggui.gui.pipeline_view import PipelineView
-from raggui.gui.pipelines_sidebar import PipelinesSidebar
-from raggui.gui.status_strip import StatusStrip
-from raggui.gui.theme import apply_app_theme, watch_app_palette
-from raggui.jobs.queue import JobQueue, suggested_worker_count
-from raggui.manifest import Pipeline, load_pipeline
-from raggui.paths import pixi_executable
+from pixiline.config import load_parallel_enabled, save_parallel_enabled
+from pixiline.gui.activity_bar import ActivityBar
+from pixiline.gui.drop_screen import DropScreen
+from pixiline.gui.jobs_panel import JobsPanel
+from pixiline.gui.pipeline_view import PipelineView
+from pixiline.gui.pipelines_sidebar import PipelinesSidebar
+from pixiline.gui.status_strip import StatusStrip
+from pixiline.gui.theme import apply_app_theme, watch_app_palette
+from pixiline.jobs.queue import JobQueue, suggested_worker_count
+from pixiline.manifest import Pipeline, load_pipeline
+from pixiline.paths import pixi_executable
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("raggui")
+        self.setWindowTitle("pixiline")
         self.resize(1280, 820)
 
         apply_app_theme()

@@ -17,11 +17,11 @@ import sys
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 
-from raggui import applog
-from raggui.jobs.job import Job, JobState
-from raggui.jobs.termlog import SettledLog
-from raggui.manifest import artifact_present, build_command, step_inputs_met
-from raggui.paths import pixi_executable
+from pixiline import applog
+from pixiline.jobs.job import Job, JobState
+from pixiline.jobs.termlog import SettledLog
+from pixiline.manifest import artifact_present, build_command, step_inputs_met
+from pixiline.paths import pixi_executable
 
 _KILL_GRACE_MS = 3000
 _INSTALL_LABEL = "Installing environments"
@@ -66,7 +66,7 @@ class Worker(QObject):
         # Stream live (no block-buffering when stdout isn't a TTY), force colour
         # on, and pin a width so progress bars size to the log terminal's screen.
         env = QProcessEnvironment.systemEnvironment()
-        # raggui runs under `pixi run gui`, which exports PIXI_*/SSL_CERT vars that
+        # pixiline runs under `pixi run gui`, which exports PIXI_*/SSL_CERT vars that
         # would leak into the pipeline's own `pixi run` (wrong manifest, missing
         # certs). Drop them so the child resolves the pipeline's manifest cleanly.
         for leaked in (
@@ -182,7 +182,7 @@ class Worker(QObject):
                 self._fail(f"Step '{name}' is not defined in the pipeline.")
                 return
             # Skip if already done (its output marker exists). Pixi's own caching is
-            # inert on these paths, so raggui decides; delete the output to re-run.
+            # inert on these paths, so pixiline decides; delete the output to re-run.
             if step.outputs and all(
                 artifact_present(o, self._job.output_base, self._job.stem) for o in step.outputs
             ):

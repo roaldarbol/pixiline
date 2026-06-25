@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from raggui.gui.constants import PANEL_MARGIN
-from raggui.gui.drop_screen import _roots_from_urls
-from raggui.gui.list_card import ListCard
+from pixiline.gui.constants import PANEL_MARGIN
+from pixiline.gui.drop_screen import _roots_from_urls
+from pixiline.gui.list_card import ListCard
 
 
 class PipelinesSidebar(QWidget):
@@ -96,7 +96,7 @@ class PipelinesSidebar(QWidget):
             self, "Select a pipeline's pixi.toml", "", "Pixi manifest (pixi.toml);;All files (*)"
         )
         if chosen:
-            from raggui.gui.drop_screen import pipeline_root_from
+            from pixiline.gui.drop_screen import pipeline_root_from
 
             root = pipeline_root_from(Path(chosen))
             if root is not None:

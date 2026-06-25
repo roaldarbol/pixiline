@@ -17,8 +17,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QTextEdit
 
-from raggui import applog
-from raggui.gui.theme import is_dark, watch_app_palette
+from pixiline import applog
+from pixiline.gui.theme import is_dark, watch_app_palette
 
 _COLS, _ROWS = 120, 300  # terminal size (rows = how much scrollback is kept)
 _REFRESH_MS = 80  # repaint at most ~12x/sec

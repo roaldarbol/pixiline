@@ -13,7 +13,7 @@ output/
 logs/
 
 # Example pipeline workspace - kept local while we experiment; not part of the
-# raggui manager repo. Remove this line to start tracking it (or move it out).
+# pixiline manager repo. Remove this line to start tracking it (or move it out).
 sleep-staging/
 
 # OS cruft

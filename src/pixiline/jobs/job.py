@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from raggui.manifest import Pipeline
+from pixiline.manifest import Pipeline
 
 _LOG_CHAR_CAP = 200_000  # keep the in-memory per-job log bounded
 

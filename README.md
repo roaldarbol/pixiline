@@ -1,10 +1,10 @@
-# raggui
+# pixiline
 
 A generic **Pixi-pipeline manager** GUI. Point it at a pipeline's `pixi.toml`
 (whose `[tasks]` are the pipeline steps), pick which steps to run and the inputs
 to run them on, queue them, and watch them execute with a live terminal log.
 
-raggui owns the **orchestration/monitoring** layer only — the queue, step gating,
+pixiline owns the **orchestration/monitoring** layer only — the queue, step gating,
 process-tree-safe cancellation, per-run + session logging, and a colour terminal.
 It carries **no** pipeline dependencies; each pipeline is its own Pixi workspace
 with its own environments and tasks.
@@ -41,7 +41,7 @@ until it moves to its own repository.
 
 ```
 pixi.toml            # this app's env (PySide6 + helpers) and the `gui` task
-src/raggui/          # the GUI
+src/pixiline/          # the GUI
 src/tools/           # build helpers (icon generation)
 sleep-staging/       # example pipeline workspace (own pixi.toml + resources)
 ```

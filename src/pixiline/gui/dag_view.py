@@ -12,8 +12,8 @@ from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
-from raggui.gui.theme import is_dark, primary_surface, watch_app_palette
-from raggui.manifest import Pipeline
+from pixiline.gui.theme import is_dark, primary_surface, watch_app_palette
+from pixiline.manifest import Pipeline
 
 _NODE_W = 96
 _NODE_H = 26

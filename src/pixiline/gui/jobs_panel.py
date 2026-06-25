@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from raggui.gui.terminal import TerminalView
-from raggui.jobs.job import Job, JobState
-from raggui.jobs.queue import JobQueue, suggested_worker_count
+from pixiline.gui.terminal import TerminalView
+from pixiline.jobs.job import Job, JobState
+from pixiline.jobs.queue import JobQueue, suggested_worker_count
 
 _FINISHED_STATES = frozenset({JobState.DONE, JobState.FAILED, JobState.CANCELED})
 

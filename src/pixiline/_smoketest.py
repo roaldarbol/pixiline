@@ -1,5 +1,5 @@
 """Offscreen construction smoke test — builds the UI without a display and exits.
-Run with: pixi run python src/raggui/_smoketest.py
+Run with: pixi run python src/pixiline/_smoketest.py
 
 Verifies imports, manifest loading (against ../sleep-staging if present), command
 building, and that the window stands up and a pipeline view instantiates. Not a
@@ -17,10 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from raggui.gui.main_window import MainWindow  # noqa: E402
-from raggui.manifest import build_command, load_pipeline  # noqa: E402
+from pixiline.gui.main_window import MainWindow  # noqa: E402
+from pixiline.manifest import build_command, load_pipeline  # noqa: E402
 
-# The example pipeline lives next to the raggui repo root.
+# The example pipeline lives next to the pixiline repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PIPELINE = _REPO_ROOT / "sleep-staging"
 
