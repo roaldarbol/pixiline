@@ -16,7 +16,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -51,6 +51,18 @@ _QUEUE_BTN_QSS = (
 
 def _pretty(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize()
+
+
+class _ClickableLineEdit(QLineEdit):
+    """A read-only path field that opens its picker when clicked anywhere, not just
+    via the adjacent button."""
+
+    clicked = Signal()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 def _inputs_from_urls(urls) -> list[Path]:
@@ -112,10 +124,12 @@ class PipelineView(QWidget):
         w = QWidget()
         row = QHBoxLayout(w)
         row.setContentsMargins(0, 0, 0, 0)
-        self._out_edit = QLineEdit(str(load_output_base() or ""))
+        self._out_edit = _ClickableLineEdit(str(load_output_base() or ""))
         self._out_edit.setReadOnly(True)
         self._out_edit.setPlaceholderText("Choose an output directory…")
         self._out_edit.setToolTip(self._out_edit.text())
+        self._out_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._out_edit.clicked.connect(self._browse_output)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_output)
         row.addWidget(self._out_edit, 1)
