@@ -39,7 +39,7 @@ def make_step(
 def sample_pipeline(tmp_path) -> Pipeline:
     """A small but realistic linear pipeline:
 
-        motion -> track -> export -> report (optional)
+        motion -> track -> export -> report
 
     Edges are derived purely from outputs feeding inputs. ``motion`` reads the
     external user file (``{{ input }}``) and carries the only required arg plus
@@ -75,7 +75,7 @@ def sample_pipeline(tmp_path) -> Pipeline:
     report = make_step(
         "report",
         env="cpu",
-        description="[optional] Render an HTML report",
+        description="Render an HTML report",
         inputs=("{{ output }}/{{ stem }}/export.parquet",),
         outputs=("{{ output }}/{{ stem }}/report.html",),
     )

@@ -21,7 +21,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
-from pixiline.gui.theme import is_dark, primary_surface, watch_app_palette
+from pixiline.gui.theme import is_dark, watch_app_palette
 from pixiline.manifest import Pipeline
 
 _NODE_W = 150
@@ -125,7 +125,7 @@ class DagView(QWidget):
 
     def _check_rect(self, name: str) -> QRectF:
         box = self._rect(name)
-        return QRectF(box.right() - _CHECK - 7, box.top() + 5, _CHECK, _CHECK)
+        return QRectF(box.right() - _CHECK - 8, box.center().y() - _CHECK / 2, _CHECK, _CHECK)
 
     # --- painting ------------------------------------------------------------
 
@@ -135,12 +135,14 @@ class DagView(QWidget):
         fg = self.palette().windowText().color()
         muted = QColor("#9aa0a6") if is_dark() else QColor("#b0b6bd")
         accent = QColor(_ACCENT)
+        # A clearly visible accent wash for selected nodes (the palette surface was
+        # near-white and read as no fill at all); focus is a fainter wash.
+        sel_fill = QColor(74, 158, 255, 64)
         focus_fill = QColor(74, 158, 255, 30)
-        fill_on = primary_surface()
 
         self._paint_edges(painter, accent, muted)
         for name in self._pos:
-            self._paint_node(painter, name, fg, muted, accent, fill_on, focus_fill)
+            self._paint_node(painter, name, fg, muted, accent, sel_fill, focus_fill)
         painter.end()
 
     def _paint_edges(self, painter: QPainter, accent: QColor, muted: QColor) -> None:
@@ -168,7 +170,7 @@ class DagView(QWidget):
         fg: QColor,
         muted: QColor,
         accent: QColor,
-        fill_on,
+        sel_fill: QColor,
         focus_fill: QColor,
     ) -> None:
         rect = self._rect(name)
@@ -182,7 +184,7 @@ class DagView(QWidget):
         border = accent if (on or focused) else muted
         painter.setPen(QPen(border, 2.0 if focused else (1.6 if on else 1.0)))
         if on:
-            painter.setBrush(fill_on)
+            painter.setBrush(sel_fill)
         elif focused:
             painter.setBrush(focus_fill)
         else:

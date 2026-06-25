@@ -69,7 +69,7 @@ class PipelineView(QWidget):
         self.display_name = pipeline.name  # editable alias shown in the sidebar / jobs
         self._order = pipeline.order()
         self._settings = pipeline.default_settings()
-        self._selected: set[str] = {s.name for s in self._order if not s.optional}
+        self._selected: set[str] = {s.name for s in self._order}
         self._focused: str | None = None
         self._files: list[Path] = []
         self.setAcceptDrops(True)
@@ -100,6 +100,9 @@ class PipelineView(QWidget):
         center.setStretchFactor(0, 0)
         center.setStretchFactor(1, 1)  # Steps (the DAG) is the primary control
         center.setStretchFactor(2, 1)
+        # The Steps card can't be collapsed; its minimum height keeps the whole DAG
+        # (+ description) visible, so dragging the handle above/below it stops there.
+        center.setCollapsible(1, False)
         center.setSizes([86, 420, 300])
         v.addWidget(center)
         return wrap
@@ -130,31 +133,16 @@ class PipelineView(QWidget):
             outer.addWidget(warn)
 
         # The DAG is the primary control: tick a box to activate a step, click a
-        # node to read its description below. It scrolls if the graph is large.
+        # node to read its description below. It is centred vertically in the space
+        # above the description.
         self._dag = DagView(self._pipeline)
         self._dag.step_toggled.connect(self._on_dag_toggle)
         self._dag.step_clicked.connect(self._on_dag_focus)
-        holder = QWidget()
-        hl = QVBoxLayout(holder)
-        hl.setContentsMargins(0, 0, 0, 0)
-        hl.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.viewport().setStyleSheet("background: transparent;")
-        scroll.setWidget(holder)
-        outer.addWidget(scroll, 1)
+        outer.addStretch(1)
+        outer.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignHCenter)
+        outer.addStretch(1)
 
-        # The run-order line (green), full width below the DAG.
-        self._status = QLabel()
-        self._status.setWordWrap(True)
-        outer.addWidget(self._status)
-
-        # A sticky "Step description" panel: header + the focused step's description.
-        # It stays put while the DAG above scrolls.
-        header = QLabel("Step description")
-        header.setStyleSheet("font-weight: 600; padding-top: 2px;")
-        outer.addWidget(header)
+        # The focused step's description, pinned at the bottom of the card.
         self._desc = QLabel()
         self._desc.setWordWrap(True)
         self._desc.setTextFormat(Qt.TextFormat.RichText)
@@ -310,23 +298,7 @@ class PipelineView(QWidget):
 
     def _refresh(self) -> None:
         self._dag.set_selected(set(self._selected))
-        self._update_status()
         self._update_queue_enabled()
-
-    def _update_status(self) -> None:
-        if not self._pipeline.steps:
-            return
-        chain = [self._pipeline.step(n).label for n in self.selected_steps()]
-        if chain:
-            self._status.setText(
-                "Run order:  "
-                + " → ".join(f"{i}. {label}" for i, label in enumerate(chain, 1))
-                + "   (steps whose inputs aren't ready are skipped per file)"
-            )
-            self._status.setStyleSheet("color: #4caf50;")
-        else:
-            self._status.setText("Tick at least one step to run.")
-            self._status.setStyleSheet("color: #d0883a;")
 
     def _update_description(self) -> None:
         step = self._pipeline.step(self._focused) if self._focused else None
@@ -334,13 +306,9 @@ class PipelineView(QWidget):
             self._desc.setText("Select a step in the graph to see its description.")
             self._desc.setStyleSheet("color: #888;")
             return
-        desc = step.description
-        if step.optional:
-            desc = desc.replace("[optional]", "").replace("[OPTIONAL]", "").strip()
         label = html.escape(step.label)
-        tag = "  <i>(optional)</i>" if step.optional else ""
-        body = html.escape(desc) if desc else "<i>No description provided.</i>"
-        self._desc.setText(f"<b>{label}</b>{tag}<br>{body}")
+        body = html.escape(step.description) if step.description else "<i>No description.</i>"
+        self._desc.setText(f"<b>{label}</b><br>{body}")
         self._desc.setStyleSheet("")
 
     def _update_queue_enabled(self) -> None:
