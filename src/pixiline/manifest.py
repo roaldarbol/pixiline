@@ -55,12 +55,6 @@ class Step:
         return self.name.replace("-", " ").replace("_", " ").strip().title()
 
     @property
-    def optional(self) -> bool:
-        """A side-branch step the author marked ``[optional]`` in its description -
-        off by default; toggled on its own (Pixi has no native 'optional' flag)."""
-        return "[optional]" in self.description.lower()
-
-    @property
     def required_args(self) -> tuple[Arg, ...]:
         """Args with no default - the run identity the user supplies (stem/output/input)."""
         return tuple(a for a in self.args if a.required)

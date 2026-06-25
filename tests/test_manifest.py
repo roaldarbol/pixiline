@@ -39,11 +39,6 @@ def test_step_label_titlecases_and_normalises_separators(name, expected):
     assert make_step(name).label == expected
 
 
-def test_step_optional_detects_tag_case_insensitively():
-    assert make_step("a", description="[OPTIONAL] side branch").optional is True
-    assert make_step("a", description="a normal step").optional is False
-
-
 def test_step_partitions_required_and_setting_args():
     step = make_step(
         "motion",

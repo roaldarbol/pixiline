@@ -219,6 +219,7 @@ class JobsPanel(QWidget):
 
         # Split: job list (top) over log pane (bottom).
         split = QSplitter(Qt.Orientation.Vertical, self)
+        split.setChildrenCollapsible(False)  # neither pane can be dragged to nothing
 
         list_container = QWidget()
         list_layout = QVBoxLayout(list_container)
@@ -256,8 +257,10 @@ class JobsPanel(QWidget):
         self._log_view = TerminalView()
         log_layout.addWidget(self._log_view, 1)
         split.addWidget(log_container)
-        split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 2)
+        # Default to an even split between the job list and the log pane.
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 1)
+        split.setSizes([500, 500])
         outer.addWidget(split, 1)
 
         # Wire queue signals.

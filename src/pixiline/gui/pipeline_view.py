@@ -13,11 +13,11 @@ whose outputs are already up to date. See jobs.worker.
 
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -53,6 +53,18 @@ def _pretty(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize()
 
 
+class _ClickableLineEdit(QLineEdit):
+    """A read-only path field that opens its picker when clicked anywhere, not just
+    via the adjacent button."""
+
+    clicked = Signal()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 def _inputs_from_urls(urls) -> list[Path]:
     return [
         Path(u.toLocalFile()) for u in urls if u.isLocalFile() and Path(u.toLocalFile()).is_file()
@@ -69,9 +81,8 @@ class PipelineView(QWidget):
         self.display_name = pipeline.name  # editable alias shown in the sidebar / jobs
         self._order = pipeline.order()
         self._settings = pipeline.default_settings()
-        self._selected: set[str] = {s.name for s in self._order if not s.optional}
-        self._checks: dict[str, QCheckBox] = {}
-        self._syncing = False
+        self._selected: set[str] = {s.name for s in self._order}
+        self._focused: str | None = None
         self._files: list[Path] = []
         self.setAcceptDrops(True)
 
@@ -82,6 +93,7 @@ class PipelineView(QWidget):
         split.addWidget(self._build_inputs())
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 0)
+        split.setChildrenCollapsible(False)  # no panel can be dragged to nothing
         split.setSizes([760, 300])
         layout.addWidget(split)
 
@@ -99,9 +111,12 @@ class PipelineView(QWidget):
         center.addWidget(Card("Steps", self._build_steps()))
         center.addWidget(Card("Settings", self._build_settings()))
         center.setStretchFactor(0, 0)
-        center.setStretchFactor(1, 0)
+        center.setStretchFactor(1, 1)  # Steps (the DAG) is the primary control
         center.setStretchFactor(2, 1)
-        center.setSizes([86, 280, 360])
+        # No card can be collapsed to nothing. The Steps card additionally has a
+        # minimum height (its body's) that keeps the whole DAG + description visible.
+        center.setChildrenCollapsible(False)
+        center.setSizes([86, 420, 300])
         v.addWidget(center)
         return wrap
 
@@ -109,10 +124,12 @@ class PipelineView(QWidget):
         w = QWidget()
         row = QHBoxLayout(w)
         row.setContentsMargins(0, 0, 0, 0)
-        self._out_edit = QLineEdit(str(load_output_base() or ""))
+        self._out_edit = _ClickableLineEdit(str(load_output_base() or ""))
         self._out_edit.setReadOnly(True)
         self._out_edit.setPlaceholderText("Choose an output directory…")
         self._out_edit.setToolTip(self._out_edit.text())
+        self._out_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._out_edit.clicked.connect(self._browse_output)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_output)
         row.addWidget(self._out_edit, 1)
@@ -125,42 +142,27 @@ class PipelineView(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(8)
 
-        top = QHBoxLayout()
-        top.setSpacing(18)
-        left = QWidget()
-        lv = QVBoxLayout(left)
-        lv.setContentsMargins(0, 0, 0, 0)
-        lv.setSpacing(2)
-        for step in self._order:
-            label = f"{step.label}  (optional)" if step.optional else step.label
-            cb = QCheckBox(label)
-            cb.toggled.connect(lambda checked, n=step.name: self._on_toggle(n, checked))
-            self._checks[step.name] = cb
-            lv.addWidget(cb)
-            desc = step.description
-            if step.optional:
-                desc = desc.replace("[optional]", "").replace("[OPTIONAL]", "").strip()
-            if desc:
-                d = QLabel(desc)
-                d.setWordWrap(True)
-                d.setStyleSheet("color: #888; margin-left: 22px; padding-bottom: 4px;")
-                lv.addWidget(d)
         if not self._pipeline.steps:
             warn = QLabel("This pipeline declares no steps (tasks with inputs/outputs).")
             warn.setStyleSheet("color: #d0883a;")
-            lv.addWidget(warn)
-        lv.addStretch(1)
-        top.addWidget(left, 1)
+            outer.addWidget(warn)
 
+        # The DAG is the primary control: tick a box to activate a step, click a
+        # node to read its description below. It is centred vertically in the space
+        # above the description.
         self._dag = DagView(self._pipeline)
-        self._dag.step_clicked.connect(self._on_dag_click)
-        top.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignVCenter)
-        outer.addLayout(top, 1)
+        self._dag.step_toggled.connect(self._on_dag_toggle)
+        self._dag.step_clicked.connect(self._on_dag_focus)
+        outer.addStretch(1)
+        outer.addWidget(self._dag, 0, Qt.AlignmentFlag.AlignHCenter)
+        outer.addStretch(1)
 
-        # "Will run: …" spans the full width, below both columns.
-        self._status = QLabel()
-        self._status.setWordWrap(True)
-        outer.addWidget(self._status)
+        # The focused step's description, pinned at the bottom of the card.
+        self._desc = QLabel()
+        self._desc.setWordWrap(True)
+        self._desc.setTextFormat(Qt.TextFormat.RichText)
+        outer.addWidget(self._desc)
+        self._update_description()
         return body
 
     def _build_settings(self) -> QWidget:
@@ -297,45 +299,32 @@ class PipelineView(QWidget):
     def selected_steps(self) -> list[str]:
         return [s.name for s in self._order if s.name in self._selected]
 
-    def _on_toggle(self, name: str, checked: bool) -> None:
-        if self._syncing:
-            return
-        if checked:
-            self._selected.add(name)
-        else:
-            self._selected.discard(name)
-        self._refresh()
-
-    def _on_dag_click(self, name: str) -> None:
+    def _on_dag_toggle(self, name: str) -> None:
         if name in self._selected:
             self._selected.discard(name)
         else:
             self._selected.add(name)
         self._refresh()
 
+    def _on_dag_focus(self, name: str) -> None:
+        self._focused = name
+        self._dag.set_focused(name)
+        self._update_description()
+
     def _refresh(self) -> None:
-        self._syncing = True
-        for step in self._order:
-            self._checks[step.name].setChecked(step.name in self._selected)
-        self._syncing = False
         self._dag.set_selected(set(self._selected))
-        self._update_status()
         self._update_queue_enabled()
 
-    def _update_status(self) -> None:
-        if not self._pipeline.steps:
+    def _update_description(self) -> None:
+        step = self._pipeline.step(self._focused) if self._focused else None
+        if step is None:
+            self._desc.setText("Select a step in the graph to see its description.")
+            self._desc.setStyleSheet("color: #888;")
             return
-        chain = [self._pipeline.step(n).label for n in self.selected_steps()]
-        if chain:
-            self._status.setText(
-                "Will run:  "
-                + " → ".join(chain)
-                + "   (steps whose inputs aren't ready are skipped per file)"
-            )
-            self._status.setStyleSheet("color: #4caf50;")
-        else:
-            self._status.setText("Pick at least one step to run.")
-            self._status.setStyleSheet("color: #d0883a;")
+        label = html.escape(step.label)
+        body = html.escape(step.description) if step.description else "<i>No description.</i>"
+        self._desc.setText(f"<b>{label}</b><br>{body}")
+        self._desc.setStyleSheet("")
 
     def _update_queue_enabled(self) -> None:
         missing = []
