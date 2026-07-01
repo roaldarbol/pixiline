@@ -10,7 +10,7 @@ Install Pixiline as a global command-line app with [Pixi](https://pixi.sh), from
 the `sleeb-forge` channel (until it lands on conda-forge):
 
 ```bash
-pixi global install pixiline -c https://prefix.dev/sleeb-forge
+pixi global install pixiline -c https://prefix.dev/sleeb-forge -c conda-forge
 ```
 
 This puts a `pixiline` command on your `PATH` and registers the app in the usual
