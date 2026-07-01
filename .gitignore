@@ -22,6 +22,10 @@ logs/
 # pixiline manager repo. Remove this line to start tracking it (or move it out).
 sleep-staging/
 
+# Built docs site (Zensical output; regenerated from docs/ + zensical.toml)
+site/
+.cache/
+
 # OS cruft
 Thumbs.db
 .DS_Store

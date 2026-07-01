@@ -1,0 +1,241 @@
+/* Pixiline docs — Pixi's brand palette.
+ *
+ * These are Pixi's own brand variables (from prefix-dev/pixi's extra.css): a
+ * deep navy chrome with a golden-yellow accent. We deliberately mirror them so
+ * the docs read as part of the Pixi ecosystem — while making clear (in the
+ * footer and on the home page) that Pixiline is an independent, unaffiliated
+ * project.
+ */
+
+/* Pixi's display face is the paid serif "Moranga"; Fraunces is a free, warm
+ * serif in the same spirit, used (like Pixi) for headings, nav titles, the
+ * header topic, and footer links. Body/code stay Inter / JetBrains Mono, which
+ * is exactly what pixi.sh uses. */
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap");
+
+:root {
+  --pixi-navy: #001838;
+  --pixi-dark: #191910;
+  --pixi-yellow: #ffd432;
+  --pixi-red: #ff6a38;
+  --pixi-blue: #5773ff;
+  --pixi-green: #70c038;
+  --pixi-white: #f8f6f2;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+}
+
+/* Headings & titles in the display serif, like the Pixi docs. */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6,
+.md-header__topic,
+.md-nav--primary .md-nav__title,
+.md-nav--secondary .md-nav__title,
+.md-footer__link .md-footer__title {
+  font-family: var(--font-display);
+}
+.md-typeset h1,
+.md-typeset h2 {
+  font-weight: 600;
+}
+
+/* --- Primary (the header / nav chrome): Pixi navy in both schemes ---------- */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--pixi-navy);
+  --md-primary-fg-color--light: #16305a;
+  --md-primary-fg-color--dark: #000d20;
+  --md-primary-bg-color: var(--pixi-white);
+  --md-primary-bg-color--light: rgba(248, 246, 242, 0.7);
+}
+
+/* --- Accent (links, hover, focus): Pixi blue in light mode ----------------- */
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--pixi-blue);
+  --md-accent-fg-color--transparent: rgba(87, 115, 255, 0.1);
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+
+/* --- Dark (slate) scheme: golden-yellow accent, navy-tinted surfaces -------
+ * `--md-default-bg-color` is the *content card*; the page behind it is darker
+ * (`--pixi-page-bg`), so the central column reads as a raised box like pixi.sh. */
+[data-md-color-scheme="slate"] {
+  --md-hue: 222; /* nudge slate's neutral greys toward Pixi navy */
+  --md-default-bg-color: #101d33; /* the content card */
+  --md-code-bg-color: #0a1526;
+  --pixi-page-bg: #0a1120; /* the page behind the card */
+}
+[data-md-color-scheme="default"] {
+  --pixi-page-bg: #eeeae1; /* warm off-white behind the white card */
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--pixi-yellow);
+  --md-accent-fg-color--transparent: rgba(255, 212, 50, 0.1);
+}
+
+/* Keep links legible and on-brand; yellow is reserved for hover/accent in dark. */
+[data-md-color-scheme="slate"] .md-typeset a {
+  color: #8fa2ff;
+}
+[data-md-color-scheme="slate"] .md-typeset a:hover {
+  color: var(--pixi-yellow);
+}
+
+/* --- Small brand touches -------------------------------------------------- */
+
+/* The site title next to the logo: larger serif, like pixi.sh's "Pixi". */
+.md-header__topic {
+  font-weight: 700;
+}
+.md-header__topic .md-ellipsis {
+  font-size: 1.35rem;
+}
+
+/* Rounded, softly shadowed screenshots so the framed shots sit on the page
+ * the way they do in the app's own aurora frames. */
+.md-typeset img[src*="assets/app-"],
+.md-typeset img[src*="assets/hero"],
+.md-typeset img[src*="assets/dag"] {
+  border-radius: 10px;
+}
+
+/* Yellow accent bar under the hero heading on the home page. */
+.md-typeset h1 {
+  border-bottom: 2px solid var(--pixi-yellow);
+  padding-bottom: 0.2rem;
+}
+
+/* --- pixi.sh-style left sidebar ------------------------------------------- */
+
+/* The active/current page reads in Pixi gold (dark) / blue (light), like Pixi. */
+.md-nav__link--active,
+.md-nav__item--active > .md-nav__link {
+  color: var(--pixi-blue);
+}
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__item--active > .md-nav__link {
+  color: var(--pixi-yellow);
+}
+
+/* Section expand/collapse chevrons pick up the accent on hover. */
+.md-nav__item .md-nav__link:hover {
+  color: var(--md-accent-fg-color);
+}
+
+/* --- pixi.sh-style boxed content ------------------------------------------ */
+
+/* The page sits on a muted background; the central column is a raised card. */
+.md-main {
+  background-color: var(--pixi-page-bg);
+}
+.md-content {
+  background-color: var(--md-default-bg-color);
+  border-radius: 12px;
+  margin-block: 1.2rem;
+  padding-inline: 1.2rem;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+[data-md-color-scheme="slate"] .md-content {
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* --- Logo above the right-hand Table of contents (pixi.sh mascot spot) ----- */
+.md-sidebar--secondary .md-nav--secondary::before {
+  content: "";
+  display: block;
+  width: 150px;
+  height: 150px;
+  margin: 0.25rem auto 1.25rem;
+  background: url("../assets/logo.png") center / contain no-repeat;
+}
+
+/* Right-hand TOC, styled like pixi.sh: a large serif "Table of contents"
+ * heading (relabelled from "On this page"), with roomy items and no sticky bar. */
+.md-sidebar--secondary .md-nav__title {
+  font-size: 0;
+  color: var(--md-default-fg-color);
+  background: transparent;
+  box-shadow: none;
+  margin-bottom: 0.5rem;
+  text-transform: none;
+}
+.md-sidebar--secondary .md-nav__title::before {
+  content: "Table of contents";
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+.md-nav--secondary .md-nav__list .md-nav__link {
+  font-size: 0.74rem;
+  margin-top: 0.08rem;
+}
+
+/* --- Tighter left-sidebar rhythm (pixi.sh is compact) ---------------------- */
+.md-nav--primary .md-nav__list .md-nav__link,
+.md-nav--primary .md-nav__item--nested > .md-nav__link {
+  margin-top: 0.1rem;
+  padding-top: 0.1rem;
+  padding-bottom: 0.1rem;
+}
+/* Also trim the gap the nested-section lists add above their children. */
+.md-nav--primary .md-nav__item .md-nav {
+  margin-top: 0.1rem;
+}
+
+/* --- pixi.sh-style prev/next footer "cards" -------------------------------- */
+/* The prev/next band matches the site background (only the cards stand out); the
+ * seam above it blends away. Only the copyright bar below is the brighter tone. */
+.md-footer {
+  background-color: var(--pixi-page-bg);
+  border-top-color: var(--pixi-page-bg);
+}
+.md-footer-meta {
+  background-color: var(--md-default-bg-color);
+}
+/* Keep the default `.md-grid` centring (so the cards line up with the content);
+ * only add a little breathing room above/below. */
+.md-footer__inner {
+  gap: 0.8rem;
+  padding-top: 1.2rem;
+  padding-bottom: 2rem;
+}
+.md-footer__link {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 12px;
+  padding: 0.7rem 1.1rem;
+  opacity: 1;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.md-footer__link:is(:hover, :focus) {
+  background-color: var(--md-accent-fg-color--transparent);
+  border-color: var(--md-accent-fg-color);
+}
+.md-footer__direction {
+  font-family: var(--font-display);
+  opacity: 0.65;
+  font-size: 0.72rem;
+}
+.md-footer__title .md-ellipsis {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* --- Tables: soft rounded border to match the boxed content --------------- */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 10px;
+  overflow: hidden;
+}
