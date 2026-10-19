@@ -20,10 +20,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up pixi
-        uses: prefix-dev/setup-pixi@v0.8.8
+        uses: prefix-dev/setup-pixi@v0.11.2
         with:
           pixi-version: v0.82.0
           environments: docs
@@ -32,7 +32,7 @@ jobs:
         run: pixi run docs-build # -> ./site (screenshots are committed under docs/assets)
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -45,4 +45,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
