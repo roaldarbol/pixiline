@@ -3,6 +3,8 @@ authors = ["Mikkel Roald-Arboel <25629697+roaldarbol@users.noreply.github.com>"]
 name = "pixiline"
 version = "0.2.0"
 channels = ["conda-forge"]
+# Keep in step with pixi-version in .github/workflows (CI pins the same pixi).
+requires-pixi = ">=0.82.0"
 platforms = ["win-64", "linux-64"]
 
 # pixiline - a generic Pixi-pipeline manager GUI.
